@@ -96,8 +96,8 @@ def evaluate():
                 q_vals = agents[i](o_tensor)
                 actions.append(q_vals.argmax(1).item())
 
-        next_obs, _, _, done, _ = env.step(actions)
-        obs = next_obs
+        next_obs, _, _, terminated, truncated, _ = env.step(actions)
+        done = bool(np.any(terminated) or np.any(truncated))
         step += 1
 
     # Zapis GIFa
