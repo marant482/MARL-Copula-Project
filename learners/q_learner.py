@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class QLearner:
-    def __init__(self, agents, mixer, target_agents, target_mixer, optimizer, gamma, device):
+    def __init__(self, agents, mixer, target_agents, target_mixer, optimizer, gamma, device, grad_clip=10.0):
         self.agents = agents
         self.mixer = mixer
         self.target_agents = target_agents
@@ -11,6 +11,7 @@ class QLearner:
         self.optimizer = optimizer
         self.gamma = gamma
         self.device = device
+        self.grad_clip = grad_clip
 
     def update(self, batch):
         obs = batch['obs'].to(self.device)             # (B, N, Obs)
@@ -51,8 +52,10 @@ class QLearner:
 
         self.optimizer.zero_grad()
         loss.backward()
-        # Przycinanie gradientów, żeby uczenie nie "wybuchło"
-        torch.nn.utils.clip_grad_norm_(list(self.agents.parameters()) + list(self.mixer.parameters()), 10)
+        # Przycinanie gradientów, żeby uczenie nie "wybuchło"for param_group in self.optimizer.param_groups:
+        for param_group in self.optimizer.param_groups:
+            torch.nn.utils.clip_grad_norm_(param_group['params'], max_norm=self.grad_clip)
+        self.optimizer.step()
         self.optimizer.step()
 
         return loss.item()
