@@ -129,7 +129,8 @@ def main():
         explorer = EpsilonGreedyExplorer(args.n_agents)
     
     buffer = ReplayBuffer(args.buffer_size, args.n_agents, args.obs_dim, STATE_DIM)
-    learner = QLearner(agents, mixer, target_agents, target_mixer, optimizer, args.gamma, device)
+    # Podmieniamy tę linijkę:
+    learner = QLearner(agents, mixer, target_agents, target_mixer, optimizer, args.gamma, device, grad_clip=args.grad_clip)
     
     obs, state = env.reset()
     episode_reward = 0
