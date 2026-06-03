@@ -25,6 +25,7 @@ def parse_args():
     parser.add_argument("--obs_dim", type=int, default=12, help="Wymiar wektora obserwacji")
     
     # Parametry treningu
+    parser.add_argument("--mixer", type=str, default="qmix", choices=["qmix", "vdn"], help="Typ miksera (qmix/vdn)")
     parser.add_argument("--total_steps", type=int, default=50000, help="Całkowita liczba kroków w środowisku")
     parser.add_argument("--batch_size", type=int, default=32, help="Rozmiar batcha")
     parser.add_argument("--buffer_size", type=int, default=10000, help="Rozmiar bufora pamięci")
@@ -56,7 +57,10 @@ def main():
     env = SimpleEnvWrapper(raw_env, args.n_agents, args.n_actions)
     
     agents = nn.ModuleList([MLPAgent(args.obs_dim, args.n_actions).to(device) for _ in range(args.n_agents)])
-    mixer = QMixMixer(args.n_agents, STATE_DIM).to(device)
+    if args.mixer == "qmix":
+        mixer = QMixMixer(args.n_agents, STATE_DIM).to(device)
+    elif args.mixer == "vdn":
+        mixer = VDNMixer().to(device)
     
     target_agents = copy.deepcopy(agents)
     target_mixer = copy.deepcopy(mixer)
@@ -121,7 +125,7 @@ def main():
     print("Trening zakończony!")
     
     # Zapis wag (w nazwie pliku dodajemy typ eksploratora, żeby plików nie nadpisywać!)
-    weights_filename = f"agents_weights_{args.explorer}.pth"
+    weights_filename = f"agents_weights_{args.mixer}_{args.explorer}.pth"
     torch.save(agents.state_dict(), weights_filename)
     print(f"Wagi modelu zostały zapisane do pliku {weights_filename}")
 
