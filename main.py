@@ -86,7 +86,7 @@ def main():
     )
     
     STATE_DIM = args.obs_dim * args.n_agents
-    TARGET_UPDATE_INTERVAL = 200
+    TARGET_UPDATE_INTERVAL = 2000
     MIN_BUFFER_SIZE = 500
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -137,8 +137,9 @@ def main():
 
         next_obs, next_state, rewards, done, info = env.step(actions)
         episode_reward += sum(rewards)
-        
-        buffer.push(obs, state, actions, rewards, next_obs, next_state, float(done))
+
+        true_done = float(np.any(terminated))
+        buffer.push(obs, state, actions, rewards, next_obs, next_state, true_done)
         obs, state = next_obs, next_state
         
         loss_val = None
@@ -149,7 +150,7 @@ def main():
             if step % TARGET_UPDATE_INTERVAL == 0:
                 learner.update_targets()
                 
-        if done:
+        if np.any(terminated) or np.any(truncated):
             episodes_done += 1
             
             # 2. Logowanie metryk treningowych na bieżąco
