@@ -1,3 +1,4 @@
+import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -12,68 +13,79 @@ from envs.wrappers import SimpleEnvWrapper
 from utils.replay_buffer import ReplayBuffer
 from learners.q_learner import QLearner
 
-import lbforaging # Wymagane by rejestrować środowiska LBF w gym
+import lbforaging
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Trening MARL z Kopulą Gaussa")
+    
+    # Parametry środowiska
+    parser.add_argument("--env_id", type=str, default="Foraging-8x8-2p-2f-v3", help="ID środowiska Gym")
+    parser.add_argument("--n_agents", type=int, default=2, help="Liczba agentów")
+    parser.add_argument("--n_actions", type=int, default=6, help="Liczba dostępnych akcji")
+    parser.add_argument("--obs_dim", type=int, default=12, help="Wymiar wektora obserwacji")
+    
+    # Parametry treningu
+    parser.add_argument("--total_steps", type=int, default=50000, help="Całkowita liczba kroków w środowisku")
+    parser.add_argument("--batch_size", type=int, default=32, help="Rozmiar batcha")
+    parser.add_argument("--buffer_size", type=int, default=10000, help="Rozmiar bufora pamięci")
+    parser.add_argument("--lr", type=float, default=5e-4, help="Learning rate (szybkość uczenia)")
+    parser.add_argument("--gamma", type=float, default=0.99, help="Współczynnik dyskontowania (gamma)")
+    
+    # Parametry eksploracji
+    parser.add_argument("--explorer", type=str, default="copula", choices=["copula", "epsilon"], help="Typ eksploratora (copula/epsilon)")
+    parser.add_argument("--eps_start", type=float, default=1.0)
+    parser.add_argument("--eps_end", type=float, default=0.05)
+    parser.add_argument("--eps_decay", type=int, default=20000, help="Czas opadania epsilona (w krokach)")
+    
+    return parser.parse_args()
 
 def main():
-    # --- Konfiguracja ---
-    ENV_ID = "Foraging-8x8-2p-2f-v3"
-    N_AGENTS = 2
-    N_ACTIONS = 6
-    OBS_DIM = 12
-    STATE_DIM = OBS_DIM * N_AGENTS
+    # Pobranie argumentów z wywołania skryptu
+    args = parse_args()
     
-    TOTAL_STEPS = 50_000
-    BATCH_SIZE = 32
-    BUFFER_SIZE = 10_000
-    MIN_BUFFER_SIZE = 500
+    STATE_DIM = args.obs_dim * args.n_agents
     TARGET_UPDATE_INTERVAL = 200
-    GAMMA = 0.99
-    LR = 5e-4
-    
-    EPS_START = 1.0
-    EPS_END = 0.05
-    EPS_DECAY = 20_000
-    
+    MIN_BUFFER_SIZE = 500
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Używam urządzenia: {device}")
+    print(f"Start treningu: Środowisko={args.env_id}, Kroki={args.total_steps}, Eksplorator={args.explorer}")
 
-    # --- Inicjalizacja komponentów ---
-    raw_env = gym.make(ENV_ID)
-    env = SimpleEnvWrapper(raw_env, N_AGENTS, N_ACTIONS)
+    # Inicjalizacja komponentów
+    raw_env = gym.make(args.env_id)
+    env = SimpleEnvWrapper(raw_env, args.n_agents, args.n_actions)
     
-    # Modele główne
-    agents = nn.ModuleList([MLPAgent(OBS_DIM, N_ACTIONS).to(device) for _ in range(N_AGENTS)])
-    mixer = QMixMixer(N_AGENTS, STATE_DIM).to(device)
+    agents = nn.ModuleList([MLPAgent(args.obs_dim, args.n_actions).to(device) for _ in range(args.n_agents)])
+    mixer = QMixMixer(args.n_agents, STATE_DIM).to(device)
     
-    # Modele docelowe (Target networks - kopie głównych modeli)
     target_agents = copy.deepcopy(agents)
     target_mixer = copy.deepcopy(mixer)
     
-    optimizer = optim.Adam(list(agents.parameters()) + list(mixer.parameters()), lr=LR)
+    optimizer = optim.Adam(list(agents.parameters()) + list(mixer.parameters()), lr=args.lr)
     
-    # Tutaj możecie przełączać eksploratora w ramach testów
-    explorer = GaussianCopulaExplorer(N_AGENTS, correlation=0.7)
-    # explorer = EpsilonGreedyExplorer(N_AGENTS)
+    # Dynamiczny wybór eksploratora na podstawie argumentu
+    if args.explorer == "copula":
+        explorer = GaussianCopulaExplorer(args.n_agents, correlation=0.7)
+    else:
+        explorer = EpsilonGreedyExplorer(args.n_agents)
     
-    buffer = ReplayBuffer(BUFFER_SIZE, N_AGENTS, OBS_DIM, STATE_DIM)
-    learner = QLearner(agents, mixer, target_agents, target_mixer, optimizer, GAMMA, device)
+    buffer = ReplayBuffer(args.buffer_size, args.n_agents, args.obs_dim, STATE_DIM)
+    learner = QLearner(agents, mixer, target_agents, target_mixer, optimizer, args.gamma, device)
     
-    # --- Pętla Treningowa ---
+    # Pętla Treningowa
     obs, state = env.reset()
     episode_reward = 0
     episodes_done = 0
     
-    pbar = tqdm(total=TOTAL_STEPS, desc="Trening QMIX")
+    pbar = tqdm(total=args.total_steps, desc=f"Trening QMIX ({args.explorer})")
     
-    for step in range(TOTAL_STEPS):
-        # Spadek Epsilona (Decay)
-        eps = max(EPS_END, EPS_START - (EPS_START - EPS_END) * step / EPS_DECAY)
+    for step in range(args.total_steps):
+        eps = max(args.eps_end, args.eps_start - (args.eps_start - args.eps_end) * step / args.eps_decay)
         
-        # Wybór akcji
         explore_mask = explorer.should_explore(eps)
         actions = []
         
-        for i in range(N_AGENTS):
+        for i in range(args.n_agents):
             if explore_mask[i]:
                 actions.append(env.env.action_space[0].sample())
             else:
@@ -82,28 +94,23 @@ def main():
                     q_vals = agents[i](o_tensor)
                     actions.append(q_vals.argmax(1).item())
 
-        # Wykonanie kroku w środowisku
         next_obs, next_state, rewards, done, info = env.step(actions)
         episode_reward += sum(rewards)
         
-        # Zapis do pamięci
         buffer.push(obs, state, actions, rewards, next_obs, next_state, float(done))
-        
         obs, state = next_obs, next_state
         
-        # Uczenie
         if len(buffer) >= MIN_BUFFER_SIZE:
-            batch = buffer.sample(BATCH_SIZE)
+            batch = buffer.sample(args.batch_size)
             loss = learner.update(batch)
             
-            # Aktualizacja sieci docelowych
             if step % TARGET_UPDATE_INTERVAL == 0:
                 learner.update_targets()
                 
         if done:
             episodes_done += 1
             if episodes_done % 10 == 0:
-                pbar.set_postfix({"Ostatnia Nagroda Epizodu": episode_reward, "Epsilon": f"{eps:.2f}"})
+                pbar.set_postfix({"Ostatnia Nagroda": episode_reward, "Epsilon": f"{eps:.2f}"})
             
             obs, state = env.reset()
             episode_reward = 0
@@ -112,9 +119,11 @@ def main():
 
     pbar.close()
     print("Trening zakończony!")
-
-    torch.save(agents.state_dict(), "agents_weights.pth")
-    print("Wagi modelu zostały zapisane do pliku agents_weights.pth")
+    
+    # Zapis wag (w nazwie pliku dodajemy typ eksploratora, żeby plików nie nadpisywać!)
+    weights_filename = f"agents_weights_{args.explorer}.pth"
+    torch.save(agents.state_dict(), weights_filename)
+    print(f"Wagi modelu zostały zapisane do pliku {weights_filename}")
 
 if __name__ == "__main__":
     main()
