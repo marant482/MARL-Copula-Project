@@ -4,7 +4,9 @@ import torch.nn as nn
 import torch.optim as optim
 import gymnasium as gym
 import copy
+import numpy as np
 from tqdm import tqdm
+import wandb
 
 from modules.agents import MLPAgent
 from modules.mixers import QMixMixer
@@ -19,56 +21,91 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Trening MARL z Kopulą Gaussa")
     
     # Parametry środowiska
-    parser.add_argument("--env_id", type=str, default="Foraging-8x8-2p-2f-v3", help="ID środowiska Gym")
-    parser.add_argument("--n_agents", type=int, default=2, help="Liczba agentów")
-    parser.add_argument("--n_actions", type=int, default=6, help="Liczba dostępnych akcji")
-    parser.add_argument("--obs_dim", type=int, default=12, help="Wymiar wektora obserwacji")
+    parser.add_argument("--env_id", type=str, default="Foraging-8x8-2p-2f-v3")
+    parser.add_argument("--n_agents", type=int, default=2)
+    parser.add_argument("--n_actions", type=int, default=6)
+    parser.add_argument("--obs_dim", type=int, default=12)
     
     # Parametry treningu
-    parser.add_argument("--mixer", type=str, default="qmix", choices=["qmix", "vdn"], help="Typ miksera (qmix/vdn)")
-    parser.add_argument("--total_steps", type=int, default=50000, help="Całkowita liczba kroków w środowisku")
-    parser.add_argument("--batch_size", type=int, default=32, help="Rozmiar batcha")
-    parser.add_argument("--buffer_size", type=int, default=10000, help="Rozmiar bufora pamięci")
-    parser.add_argument("--lr", type=float, default=5e-4, help="Learning rate (szybkość uczenia)")
-    parser.add_argument("--gamma", type=float, default=0.99, help="Współczynnik dyskontowania (gamma)")
+    parser.add_argument("--total_steps", type=int, default=50000)
+    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--buffer_size", type=int, default=10000)
+    parser.add_argument("--lr", type=float, default=5e-4)
+    parser.add_argument("--gamma", type=float, default=0.99)
+    parser.add_argument("--mixer", type=str, default="qmix", choices=["qmix", "vdn"])
     
     # Parametry eksploracji
-    parser.add_argument("--copula_corr", type=float, default=0.7, help="Wartość korelacji (rho) dla Kopuli")
-    parser.add_argument("--explorer", type=str, default="copula", choices=["copula", "epsilon"], help="Typ eksploratora (copula/epsilon)")
+    parser.add_argument("--explorer", type=str, default="copula", choices=["copula", "epsilon"])
+    parser.add_argument("--copula_corr", type=float, default=0.7)
     parser.add_argument("--eps_start", type=float, default=1.0)
     parser.add_argument("--eps_end", type=float, default=0.05)
-    parser.add_argument("--eps_decay", type=int, default=20000, help="Czas opadania epsilona (w krokach)")
+    parser.add_argument("--eps_decay", type=int, default=20000)
+    
+    # Parametry ewaluacji (NOWE)
+    parser.add_argument("--eval_interval", type=int, default=5000, help="Co ile kroków testować model")
+    parser.add_argument("--eval_episodes", type=int, default=10, help="Liczba epizodów testowych")
     
     return parser.parse_args()
 
+def evaluate_model(env_id, n_agents, n_actions, agents, device, eval_episodes):
+    """Przeprowadza czystą ewaluację bez eksploracji i zwraca średnią nagrodę."""
+    eval_raw_env = gym.make(env_id)
+    eval_env = SimpleEnvWrapper(eval_raw_env, n_agents, n_actions)
+    
+    total_rewards = []
+    
+    for _ in range(eval_episodes):
+        obs, _ = eval_env.reset()
+        done = False
+        ep_reward = 0
+        
+        while not done:
+            actions = []
+            for i in range(n_agents):
+                with torch.no_grad():
+                    o_tensor = torch.tensor(obs[i], dtype=torch.float32).unsqueeze(0).to(device)
+                    q_vals = agents[i](o_tensor)
+                    actions.append(q_vals.argmax(1).item())
+                    
+            next_obs, _, rewards, done, _ = eval_env.step(actions)
+            ep_reward += sum(rewards)
+            obs = next_obs
+            
+        total_rewards.append(ep_reward)
+        
+    return np.mean(total_rewards)
+
 def main():
-    # Pobranie argumentów z wywołania skryptu
     args = parse_args()
+    
+    # 1. Inicjalizacja Weights & Biases
+    wandb.init(
+        project="MARL-Copula-Project",
+        name=f"{args.env_id}_{args.mixer}_{args.explorer}_rho{args.copula_corr}",
+        config=vars(args)
+    )
     
     STATE_DIM = args.obs_dim * args.n_agents
     TARGET_UPDATE_INTERVAL = 200
     MIN_BUFFER_SIZE = 500
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Używam urządzenia: {device}")
-    print(f"Start treningu: Środowisko={args.env_id}, Kroki={args.total_steps}, Eksplorator={args.explorer}")
 
-    # Inicjalizacja komponentów
     raw_env = gym.make(args.env_id)
     env = SimpleEnvWrapper(raw_env, args.n_agents, args.n_actions)
     
     agents = nn.ModuleList([MLPAgent(args.obs_dim, args.n_actions).to(device) for _ in range(args.n_agents)])
+    
     if args.mixer == "qmix":
         mixer = QMixMixer(args.n_agents, STATE_DIM).to(device)
     elif args.mixer == "vdn":
         mixer = VDNMixer().to(device)
-    
+        
     target_agents = copy.deepcopy(agents)
     target_mixer = copy.deepcopy(mixer)
     
     optimizer = optim.Adam(list(agents.parameters()) + list(mixer.parameters()), lr=args.lr)
     
-    # Dynamiczny wybór eksploratora na podstawie argumentu
     if args.explorer == "copula":
         explorer = GaussianCopulaExplorer(args.n_agents, correlation=args.copula_corr)
     else:
@@ -77,14 +114,13 @@ def main():
     buffer = ReplayBuffer(args.buffer_size, args.n_agents, args.obs_dim, STATE_DIM)
     learner = QLearner(agents, mixer, target_agents, target_mixer, optimizer, args.gamma, device)
     
-    # Pętla Treningowa
     obs, state = env.reset()
     episode_reward = 0
     episodes_done = 0
     
-    pbar = tqdm(total=args.total_steps, desc=f"Trening QMIX ({args.explorer})")
+    pbar = tqdm(total=args.total_steps, desc=f"Trening {args.mixer.upper()} ({args.explorer})")
     
-    for step in range(args.total_steps):
+    for step in range(1, args.total_steps + 1):
         eps = max(args.eps_end, args.eps_start - (args.eps_start - args.eps_end) * step / args.eps_decay)
         
         explore_mask = explorer.should_explore(eps)
@@ -105,30 +141,49 @@ def main():
         buffer.push(obs, state, actions, rewards, next_obs, next_state, float(done))
         obs, state = next_obs, next_state
         
+        loss_val = None
         if len(buffer) >= MIN_BUFFER_SIZE:
             batch = buffer.sample(args.batch_size)
-            loss = learner.update(batch)
+            loss_val = learner.update(batch)
             
             if step % TARGET_UPDATE_INTERVAL == 0:
                 learner.update_targets()
                 
         if done:
             episodes_done += 1
-            if episodes_done % 10 == 0:
-                pbar.set_postfix({"Ostatnia Nagroda": episode_reward, "Epsilon": f"{eps:.2f}"})
+            
+            # 2. Logowanie metryk treningowych na bieżąco
+            metrics_to_log = {
+                "Train/Episode_Reward": episode_reward,
+                "Train/Epsilon": eps,
+                "Global_Step": step
+            }
+            if loss_val is not None:
+                metrics_to_log["Train/Loss"] = loss_val
+                
+            wandb.log(metrics_to_log)
             
             obs, state = env.reset()
             episode_reward = 0
             
+        # 3. Okresowa Ewaluacja (Testowanie modelu)
+        if step % args.eval_interval == 0:
+            mean_eval_reward = evaluate_model(args.env_id, args.n_agents, args.n_actions, agents, device, args.eval_episodes)
+            wandb.log({
+                "Eval/Mean_Reward": mean_eval_reward,
+                "Global_Step": step
+            })
+            pbar.set_postfix({"Eval Reward": f"{mean_eval_reward:.2f}", "Epsilon": f"{eps:.2f}"})
+            
         pbar.update(1)
 
     pbar.close()
-    print("Trening zakończony!")
     
-    # Zapis wag (w nazwie pliku dodajemy typ eksploratora, żeby plików nie nadpisywać!)
     weights_filename = f"agents_weights_{args.mixer}_{args.explorer}.pth"
     torch.save(agents.state_dict(), weights_filename)
-    print(f"Wagi modelu zostały zapisane do pliku {weights_filename}")
+    
+    # 4. Zakończenie pracy z WandB
+    wandb.finish()
 
 if __name__ == "__main__":
     main()
