@@ -33,6 +33,7 @@ def parse_args():
     parser.add_argument("--gamma", type=float, default=0.99, help="Współczynnik dyskontowania (gamma)")
     
     # Parametry eksploracji
+    parser.add_argument("--copula_corr", type=float, default=0.7, help="Wartość korelacji (rho) dla Kopuli")
     parser.add_argument("--explorer", type=str, default="copula", choices=["copula", "epsilon"], help="Typ eksploratora (copula/epsilon)")
     parser.add_argument("--eps_start", type=float, default=1.0)
     parser.add_argument("--eps_end", type=float, default=0.05)
@@ -69,7 +70,7 @@ def main():
     
     # Dynamiczny wybór eksploratora na podstawie argumentu
     if args.explorer == "copula":
-        explorer = GaussianCopulaExplorer(args.n_agents, correlation=0.7)
+        explorer = GaussianCopulaExplorer(args.n_agents, correlation=args.copula_corr)
     else:
         explorer = EpsilonGreedyExplorer(args.n_agents)
     
