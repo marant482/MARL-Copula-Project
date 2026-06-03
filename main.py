@@ -95,7 +95,7 @@ def main():
     )
     
     STATE_DIM = args.obs_dim * args.n_agents
-    TARGET_UPDATE_INTERVAL = 2000
+    TARGET_UPDATE_INTERVAL = args.target_update
     MIN_BUFFER_SIZE = 500
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
