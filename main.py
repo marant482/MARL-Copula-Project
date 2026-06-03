@@ -113,5 +113,8 @@ def main():
     pbar.close()
     print("Trening zakończony!")
 
+    torch.save(agents.state_dict(), "agents_weights.pth")
+    print("Wagi modelu zostały zapisane do pliku agents_weights.pth")
+
 if __name__ == "__main__":
     main()
