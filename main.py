@@ -44,6 +44,11 @@ def parse_args():
     # Parametry ewaluacji (NOWE)
     parser.add_argument("--eval_interval", type=int, default=5000, help="Co ile kroków testować model")
     parser.add_argument("--eval_episodes", type=int, default=10, help="Liczba epizodów testowych")
+
+    # Parametry stabilności RL
+    parser.add_argument("--independent_agents", action="store_true", help="Jeśli flaga jest podana, agenci mają oddzielne sieci (domyślnie: współdzielą jedną)")
+    parser.add_argument("--grad_clip", type=float, default=10.0, help="Maksymalna norma gradientu (clipping)")
+    parser.add_argument("--target_update", type=int, default=5000, help="Co ile kroków aktualizować sieć docelową")
     
     return parser.parse_args()
 
@@ -98,7 +103,15 @@ def main():
     raw_env = gym.make(args.env_id)
     env = SimpleEnvWrapper(raw_env, args.n_agents, args.n_actions)
     
-    agents = nn.ModuleList([MLPAgent(args.obs_dim, args.n_actions).to(device) for _ in range(args.n_agents)])
+    #agents = nn.ModuleList([MLPAgent(args.obs_dim, args.n_actions).to(device) for _ in range(args.n_agents)])
+    
+    # Inicjalizacja sieci agentów (Współdzielenie wag lub oddzielne sieci)
+    if args.independent_agents:
+        agents = nn.ModuleList([MLPAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim, num_layers=args.num_layers).to(device) for _ in range(args.n_agents)])
+    else:
+        shared_agent = MLPAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim, num_layers=args.num_layers).to(device)
+        agents = nn.ModuleList([shared_agent for _ in range(args.n_agents)]) # Wszyscy wskazują na jeden "mózg"
+        
     
     if args.mixer == "qmix":
         mixer = QMixMixer(args.n_agents, STATE_DIM).to(device)
