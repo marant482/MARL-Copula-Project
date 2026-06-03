@@ -67,7 +67,11 @@ def evaluate_model(env_id, n_agents, n_actions, agents, device, eval_episodes):
                     q_vals = agents[i](o_tensor)
                     actions.append(q_vals.argmax(1).item())
                     
-            next_obs, _, rewards, done, _ = eval_env.step(actions)
+            next_obs, _, rewards, terminated, truncated, _ = eval_env.step(actions)
+            
+            # W ewaluacji koniec epizodu następuje przy którymkolwiek z tych warunków
+            done = bool(np.any(terminated) or np.any(truncated))
+            
             ep_reward += sum(rewards)
             obs = next_obs
             
