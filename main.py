@@ -49,6 +49,10 @@ def parse_args():
     parser.add_argument("--independent_agents", action="store_true", help="Jeśli flaga jest podana, agenci mają oddzielne sieci (domyślnie: współdzielą jedną)")
     parser.add_argument("--grad_clip", type=float, default=10.0, help="Maksymalna norma gradientu (clipping)")
     parser.add_argument("--target_update", type=int, default=5000, help="Co ile kroków aktualizować sieć docelową")
+
+    # Parametry architektury sieci
+    parser.add_argument("--hidden_dim", type=int, default=128, help="Liczba neuronów w warstwie")
+    parser.add_argument("--num_layers", type=int, default=2, help="Liczba warstw ukrytych")
     
     return parser.parse_args()
 
