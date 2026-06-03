@@ -33,9 +33,8 @@ class SimpleEnvWrapper(BaseEnvWrapper):
         
     def step(self, actions):
         next_obs, rewards, terminated, truncated, info = self.env.step(actions)
-        done = bool(np.any(terminated) or np.any(truncated))
         next_global_state = np.concatenate(next_obs)
-        return next_obs, next_global_state, rewards, done, info
+        return next_obs, next_global_state, rewards, terminated, truncated, info
 
     def get_avail_actions(self):
         # Wszystkie akcje zawsze dozwolone
