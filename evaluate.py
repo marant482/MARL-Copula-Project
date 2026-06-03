@@ -15,6 +15,7 @@ def parse_args():
     
     # Parametry środowiska (muszą się zgadzać z tymi z treningu!)
     parser.add_argument("--env_id", type=str, default="Foraging-8x8-2p-2f-v3", help="ID środowiska Gym")
+    parser.add_argument("--mixer", type=str, default="qmix", choices=["qmix", "vdn"], help="Jakiego miksera użyto do treningu?")
     parser.add_argument("--n_agents", type=int, default=2, help="Liczba agentów")
     parser.add_argument("--n_actions", type=int, default=6, help="Liczba dostępnych akcji")
     parser.add_argument("--obs_dim", type=int, default=12, help="Wymiar wektora obserwacji")
@@ -39,7 +40,7 @@ def evaluate():
 
     # Ładowanie wytrenowanych agentów
     agents = nn.ModuleList([MLPAgent(args.obs_dim, args.n_actions).to(device) for _ in range(args.n_agents)])
-    weights_filename = f"agents_weights_{args.explorer}.pth"
+    weights_filename = f"agents_weights_{args.mixer}_{args.explorer}.pth"
     
     try:
         agents.load_state_dict(torch.load(weights_filename, map_location=device, weights_only=True))
