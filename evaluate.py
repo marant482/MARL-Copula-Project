@@ -23,6 +23,11 @@ def parse_args():
     # Parametry ewaluacji
     parser.add_argument("--explorer", type=str, default="copula", choices=["copula", "epsilon"], help="Które wagi wczytać?")
     parser.add_argument("--max_steps", type=int, default=50, help="Maksymalna liczba kroków animacji")
+
+    # Parametry stabilności RL
+    parser.add_argument("--independent_agents", action="store_true", help="Jeśli flaga jest podana, agenci mają oddzielne sieci (domyślnie: współdzielą jedną)")
+    parser.add_argument("--grad_clip", type=float, default=10.0, help="Maksymalna norma gradientu (clipping)")
+    parser.add_argument("--target_update", type=int, default=5000, help="Co ile kroków aktualizować sieć docelową")
     
     return parser.parse_args()
 
@@ -39,7 +44,16 @@ def evaluate():
     env = SimpleEnvWrapper(raw_env, args.n_agents, args.n_actions)
 
     # Ładowanie wytrenowanych agentów
-    agents = nn.ModuleList([MLPAgent(args.obs_dim, args.n_actions).to(device) for _ in range(args.n_agents)])
+    #agents = nn.ModuleList([MLPAgent(args.obs_dim, args.n_actions).to(device) for _ in range(args.n_agents)])
+    # Inicjalizacja sieci agentów (Współdzielenie wag lub oddzielne sieci)
+    if args.independent_agents:
+        agents = nn.ModuleList([MLPAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim, num_layers=args.num_layers).to(device) for _ in range(args.n_agents)])
+    else:
+        shared_agent = MLPAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim, num_layers=args.num_layers).to(device)
+        agents = nn.ModuleList([shared_agent for _ in range(args.n_agents)]) # Wszyscy wskazują na jeden "mózg"
+
+    
+    
     weights_filename = f"agents_weights_{args.mixer}_{args.explorer}.pth"
     
     try:
