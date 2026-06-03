@@ -135,12 +135,13 @@ def main():
                     q_vals = agents[i](o_tensor)
                     actions.append(q_vals.argmax(1).item())
 
-        next_obs, next_state, rewards, done, info = env.step(actions)
+        next_obs, next_state, rewards, terminated, truncated, info = env.step(actions)
         episode_reward += sum(rewards)
 
         true_done = float(np.any(terminated))
         buffer.push(obs, state, actions, rewards, next_obs, next_state, true_done)
         obs, state = next_obs, next_state
+        done = bool(np.any(terminated) or np.any(truncated))
         
         loss_val = None
         if len(buffer) >= MIN_BUFFER_SIZE:
