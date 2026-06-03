@@ -9,7 +9,7 @@ from tqdm import tqdm
 import wandb
 
 from modules.agents import MLPAgent
-from modules.mixers import QMixMixer
+from modules.mixers import QMixMixer, VDNMixer
 from modules.explorers import GaussianCopulaExplorer, EpsilonGreedyExplorer
 from envs.wrappers import SimpleEnvWrapper
 from utils.replay_buffer import ReplayBuffer
