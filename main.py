@@ -148,15 +148,32 @@ def main():
         explore_mask = explorer.should_explore(eps)
         actions = []
         
-        for i in range(args.n_agents):
-            if explore_mask[i]:
-                actions.append(env.env.action_space[0].sample())
-            else:
-                with torch.no_grad():
-                    o_tensor = torch.tensor(obs[i], dtype=torch.float32).unsqueeze(0).to(device)
-                    q_vals = agents[i](o_tensor)
-                    actions.append(q_vals.argmax(1).item())
-
+        if not args.independent_agents:
+            # 1. Złożenie obserwacji wszystkich agentów w jeden Tensor (batch)
+            obs_tensor = torch.tensor(np.array(obs), dtype=torch.float32).to(device)
+            
+            # 2. Przekazanie całego batcha przez wspólną sieć naraz (bardzo szybkie na GPU)
+            with torch.no_grad():
+                q_vals = agents[0](obs_tensor) # Wynik ma kształt: [n_agents, n_actions]
+                greedy_actions = q_vals.argmax(dim=1).cpu().numpy()
+                
+            # 3. Złożenie finalnej listy akcji (uwzględnienie losowych akcji eksploracyjnych)
+            for i in range(args.n_agents):
+                if explore_mask[i]:
+                    actions.append(env.env.action_space[0].sample())
+                else:
+                    actions.append(int(greedy_actions[i]))
+                    
+        else:
+            # Wersja oryginalna dla agentów, którzy mają oddzielne "mózgi" (nie dzielą wag)
+            for i in range(args.n_agents):
+                if explore_mask[i]:
+                    actions.append(env.env.action_space[0].sample())
+                else:
+                    with torch.no_grad():
+                        o_tensor = torch.tensor(obs[i], dtype=torch.float32).unsqueeze(0).to(device)
+                        q_vals = agents[i](o_tensor)
+                        actions.append(q_vals.argmax(1).item())
         next_obs, next_state, rewards, terminated, truncated, info = env.step(actions)
         episode_reward += sum(rewards)
 
