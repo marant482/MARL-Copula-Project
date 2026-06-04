@@ -56,7 +56,6 @@ class QLearner:
         for param_group in self.optimizer.param_groups:
             torch.nn.utils.clip_grad_norm_(param_group['params'], max_norm=self.grad_clip)
         self.optimizer.step()
-        self.optimizer.step()
 
         return loss.item()
 
