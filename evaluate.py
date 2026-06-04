@@ -12,6 +12,9 @@ from envs.wrappers import SimpleEnvWrapper
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Ewaluacja wytrenowanego modelu MARL")
+
+    parser.add_argument("--hidden_dim", type=int, default=128)
+    parser.add_argument("--num_layers", type=int, default=2)
     
     # Parametry środowiska (muszą się zgadzać z tymi z treningu!)
     parser.add_argument("--env_id", type=str, default="Foraging-8x8-2p-2f-v3", help="ID środowiska Gym")
