@@ -21,7 +21,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Trening MARL z Kopulą Gaussa")
     
     # Parametry środowiska
-    parser.add_argument("--env_id", type=str, default="Foraging-8x8-2p-1f-coop-v3")
+    parser.add_argument("--env_id", type=str, default="Foraging-8x8-2p-2f-coop-v3")
     parser.add_argument("--n_agents", type=int, default=2)
     parser.add_argument("--n_actions", type=int, default=6)
     parser.add_argument("--obs_dim", type=int, default=12)
