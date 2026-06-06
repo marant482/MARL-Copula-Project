@@ -21,13 +21,20 @@ class QLearner:
         next_obs = batch['next_obs'].to(self.device)
         next_states = batch['next_states'].to(self.device)
         dones = batch['dones'].to(self.device)
+        
+        hiddens = batch['hiddens'].to(self.device)           # (B, N, Hidden)
+        next_hiddens = batch['next_hiddens'].to(self.device) # (B, N, Hidden)
 
         B, N, _ = obs.shape
 
         # 1. Obecne wartości Q dla wybranych akcji
         agent_qs = []
         for i in range(N):
-            q_vals = self.agents[i](obs[:, i, :])
+            agent = self.agents[i]
+            if hasattr(agent, "rnn"): # Jeśli to agent RNN, przekaż stan ukryty
+                q_vals, _ = agent(obs[:, i, :], hiddens[:, i, :])
+            else:
+                q_vals = agent(obs[:, i, :])
             chosen_q = q_vals.gather(1, actions[:, i:i+1]).squeeze(1)
             agent_qs.append(chosen_q)
         agent_qs = torch.stack(agent_qs, dim=1) # (B, N)
@@ -38,7 +45,11 @@ class QLearner:
         with torch.no_grad():
             target_agent_qs = []
             for i in range(N):
-                target_q_vals = self.target_agents[i](next_obs[:, i, :])
+                target_agent = self.target_agents[i]
+                if hasattr(target_agent, "rnn"):
+                    target_q_vals, _ = target_agent(next_obs[:, i, :], next_hiddens[:, i, :])
+                else:
+                    target_q_vals = target_agent(next_obs[:, i, :])
                 max_target_q = target_q_vals.max(dim=1)[0]
                 target_agent_qs.append(max_target_q)
             target_agent_qs = torch.stack(target_agent_qs, dim=1)
@@ -52,7 +63,6 @@ class QLearner:
 
         self.optimizer.zero_grad()
         loss.backward()
-        # Przycinanie gradientów, żeby uczenie nie "wybuchło"for param_group in self.optimizer.param_groups:
         for param_group in self.optimizer.param_groups:
             torch.nn.utils.clip_grad_norm_(param_group['params'], max_norm=self.grad_clip)
         self.optimizer.step()
@@ -60,7 +70,6 @@ class QLearner:
         return loss.item()
 
     def update_targets(self):
-        # Aktualizacja sieci docelowych (wykonywana co X kroków)
         for agent, target_agent in zip(self.agents, self.target_agents):
             target_agent.load_state_dict(agent.state_dict())
         self.target_mixer.load_state_dict(self.mixer.state_dict())
