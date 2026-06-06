@@ -74,8 +74,10 @@ class ReplayBuffer:
             rewards=torch.FloatTensor(self.rewards[idxs]),
             next_obs=torch.FloatTensor(self.next_obs[idxs]),
             next_states=torch.FloatTensor(self.next_states[idxs]),
-            dones=torch.FloatTensor(self.dones[idxs])
+            dones=torch.FloatTensor(self.dones[idxs]),
+            # TE DWIE LINIJKI SĄ KLUCZOWE DLA RNN:
+            hiddens=torch.FloatTensor(self.hiddens[idxs]),
+            next_hiddens=torch.FloatTensor(self.next_hiddens[idxs])
         )
-
     def __len__(self):
         return self.size
