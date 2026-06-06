@@ -2,33 +2,40 @@ import numpy as np
 import torch
 
 class ReplayBuffer:
-    def __init__(self, capacity, n_agents, obs_dim, state_dim):
+    def __init__(self, capacity, n_agents, obs_dim, state_dim, hidden_dim=128):
         self.capacity = capacity
         self.ptr = 0
         self.size = 0
+        self.hidden_dim = hidden_dim
         
-        # Inicjalizacja pustych tablic numpy dla szybkości
         self.obs = np.zeros((capacity, n_agents, obs_dim), dtype=np.float32)
         self.next_obs = np.zeros((capacity, n_agents, obs_dim), dtype=np.float32)
         self.states = np.zeros((capacity, state_dim), dtype=np.float32)
         self.next_states = np.zeros((capacity, state_dim), dtype=np.float32)
         self.actions = np.zeros((capacity, n_agents), dtype=np.int64)
-        self.rewards = np.zeros((capacity, 1), dtype=np.float32) # Globalna nagroda
+        self.rewards = np.zeros((capacity, 1), dtype=np.float32)
         self.dones = np.zeros((capacity, 1), dtype=np.float32)
+        
+        # Nowe tablice na stany ukryte RNN
+        self.hiddens = np.zeros((capacity, n_agents, hidden_dim), dtype=np.float32)
+        self.next_hiddens = np.zeros((capacity, n_agents, hidden_dim), dtype=np.float32)
 
-    def push(self, obs, state, actions, reward, next_obs, next_state, done):
+    def push(self, obs, state, actions, reward, next_obs, next_state, done, hiddens=None, next_hiddens=None):
         idx = self.ptr
         self.obs[idx] = obs
         self.states[idx] = state
         self.actions[idx] = actions
         
-        # Nagrody w środowiskach kooperacyjnych często są sumowane w jedną globalną
         global_reward = sum(reward) if isinstance(reward, (list, np.ndarray)) else reward
         self.rewards[idx] = global_reward
         
         self.next_obs[idx] = next_obs
         self.next_states[idx] = next_state
         self.dones[idx] = done
+
+        if hiddens is not None:
+            self.hiddens[idx] = hiddens
+            self.next_hiddens[idx] = next_hiddens
 
         self.ptr = (self.ptr + 1) % self.capacity
         self.size = min(self.size + 1, self.capacity)
