@@ -8,7 +8,7 @@ import numpy as np
 from tqdm import tqdm
 import wandb
 
-from modules.agents import MLPAgent
+from modules.agents import MLPAgent, RNNAgent
 from modules.mixers import QMixMixer, VDNMixer
 from modules.explorers import GaussianCopulaExplorer, EpsilonGreedyExplorer
 from envs.wrappers import SimpleEnvWrapper
@@ -21,7 +21,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Trening MARL z Kopulą Gaussa")
     
     # Parametry środowiska
-    parser.add_argument("--env_id", type=str, default="Foraging-8x8-2p-2f-coop-v3")
+    parser.add_argument("--env_id", type=str, default="Foraging-8x8-2p-2f-v3")
     parser.add_argument("--n_agents", type=int, default=2)
     parser.add_argument("--n_actions", type=int, default=6)
     parser.add_argument("--obs_dim", type=int, default=12)
@@ -41,26 +41,25 @@ def parse_args():
     parser.add_argument("--eps_end", type=float, default=0.05)
     parser.add_argument("--eps_decay", type=int, default=20000)
     
-    # Parametry ewaluacji (NOWE)
-    parser.add_argument("--eval_interval", type=int, default=5000, help="Co ile kroków testować model")
-    parser.add_argument("--eval_episodes", type=int, default=10, help="Liczba epizodów testowych")
+    # Parametry ewaluacji
+    parser.add_argument("--eval_interval", type=int, default=5000)
+    parser.add_argument("--eval_episodes", type=int, default=10)
 
     # Parametry stabilności RL
-    parser.add_argument("--independent_agents", action="store_true", help="Jeśli flaga jest podana, agenci mają oddzielne sieci (domyślnie: współdzielą jedną)")
-    parser.add_argument("--grad_clip", type=float, default=10.0, help="Maksymalna norma gradientu (clipping)")
-    parser.add_argument("--target_update", type=int, default=5000, help="Co ile kroków aktualizować sieć docelową")
+    parser.add_argument("--independent_agents", action="store_true")
+    parser.add_argument("--grad_clip", type=float, default=10.0)
+    parser.add_argument("--target_update", type=int, default=5000)
 
     # Parametry architektury sieci
-    parser.add_argument("--hidden_dim", type=int, default=128, help="Liczba neuronów w warstwie")
-    parser.add_argument("--num_layers", type=int, default=2, help="Liczba warstw ukrytych")
+    parser.add_argument("--agent_type", type=str, default="rnn", choices=["rnn", "mlp"], help="Typ sieci agenta (domyślnie rnn)")
+    parser.add_argument("--hidden_dim", type=int, default=128)
+    parser.add_argument("--num_layers", type=int, default=2)
     
     return parser.parse_args()
 
-def evaluate_model(env_id, n_agents, n_actions, agents, device, eval_episodes):
-    """Przeprowadza czystą ewaluację bez eksploracji i zwraca średnią nagrodę."""
+def evaluate_model(env_id, n_agents, n_actions, agents, device, eval_episodes, agent_type, hidden_dim):
     eval_raw_env = gym.make(env_id)
     eval_env = SimpleEnvWrapper(eval_raw_env, n_agents, n_actions)
-    
     total_rewards = []
     
     for _ in range(eval_episodes):
@@ -68,33 +67,35 @@ def evaluate_model(env_id, n_agents, n_actions, agents, device, eval_episodes):
         done = False
         ep_reward = 0
         
+        if agent_type == "rnn":
+            hiddens = torch.zeros(n_agents, hidden_dim).to(device)
+        
         while not done:
             actions = []
             for i in range(n_agents):
                 with torch.no_grad():
                     o_tensor = torch.tensor(obs[i], dtype=torch.float32).unsqueeze(0).to(device)
-                    q_vals = agents[i](o_tensor)
+                    if agent_type == "rnn":
+                        q_vals, h_next = agents[i](o_tensor, hiddens[i].unsqueeze(0))
+                        hiddens[i] = h_next.squeeze(0)
+                    else:
+                        q_vals = agents[i](o_tensor)
                     actions.append(q_vals.argmax(1).item())
                     
             next_obs, _, rewards, terminated, truncated, _ = eval_env.step(actions)
-            
-            # W ewaluacji koniec epizodu następuje przy którymkolwiek z tych warunków
             done = bool(np.any(terminated) or np.any(truncated))
-            
             ep_reward += sum(rewards)
             obs = next_obs
             
         total_rewards.append(ep_reward)
-        
     return np.mean(total_rewards)
 
 def main():
     args = parse_args()
     
-    # 1. Inicjalizacja Weights & Biases
     wandb.init(
         project="MARL-Copula-Project",
-        name=f"{args.env_id}_{args.mixer}_{args.explorer}_rho{args.copula_corr}",
+        name=f"{args.env_id}_{args.mixer}_{args.explorer}_{args.agent_type}_rho{args.copula_corr}",
         config=vars(args)
     )
     
@@ -103,20 +104,23 @@ def main():
     MIN_BUFFER_SIZE = 500
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
     raw_env = gym.make(args.env_id)
     env = SimpleEnvWrapper(raw_env, args.n_agents, args.n_actions)
     
-    #agents = nn.ModuleList([MLPAgent(args.obs_dim, args.n_actions).to(device) for _ in range(args.n_agents)])
-    
-    # Inicjalizacja sieci agentów (Współdzielenie wag lub oddzielne sieci)
-    if args.independent_agents:
-        agents = nn.ModuleList([MLPAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim, num_layers=args.num_layers).to(device) for _ in range(args.n_agents)])
+    # Inicjalizacja sieci w zależności od agent_type
+    if args.agent_type == "rnn":
+        if args.independent_agents:
+            agents = nn.ModuleList([RNNAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim).to(device) for _ in range(args.n_agents)])
+        else:
+            shared_agent = RNNAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim).to(device)
+            agents = nn.ModuleList([shared_agent for _ in range(args.n_agents)])
     else:
-        shared_agent = MLPAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim, num_layers=args.num_layers).to(device)
-        agents = nn.ModuleList([shared_agent for _ in range(args.n_agents)]) # Wszyscy wskazują na jeden "mózg"
+        if args.independent_agents:
+            agents = nn.ModuleList([MLPAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim, num_layers=args.num_layers).to(device) for _ in range(args.n_agents)])
+        else:
+            shared_agent = MLPAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim, num_layers=args.num_layers).to(device)
+            agents = nn.ModuleList([shared_agent for _ in range(args.n_agents)])
         
-    
     if args.mixer == "qmix":
         mixer = QMixMixer(args.n_agents, STATE_DIM).to(device)
     elif args.mixer == "vdn":
@@ -132,98 +136,103 @@ def main():
     else:
         explorer = EpsilonGreedyExplorer(args.n_agents)
     
-    buffer = ReplayBuffer(args.buffer_size, args.n_agents, args.obs_dim, STATE_DIM)
-    # Podmieniamy tę linijkę:
+    buffer = ReplayBuffer(args.buffer_size, args.n_agents, args.obs_dim, STATE_DIM, hidden_dim=args.hidden_dim)
     learner = QLearner(agents, mixer, target_agents, target_mixer, optimizer, args.gamma, device, grad_clip=args.grad_clip)
     
     obs, state = env.reset()
     episode_reward = 0
     episodes_done = 0
     
+    # Inicjalizacja stanów ukrytych dla pierwszego epizodu
+    hiddens = torch.zeros(args.n_agents, args.hidden_dim).to(device) if args.agent_type == "rnn" else None
+    
     pbar = tqdm(total=args.total_steps, desc=f"Trening {args.mixer.upper()} ({args.explorer})")
     
     for step in range(1, args.total_steps + 1):
         eps = max(args.eps_end, args.eps_start - (args.eps_start - args.eps_end) * step / args.eps_decay)
-        
         explore_mask = explorer.should_explore(eps)
         actions = []
         
+        next_hiddens = torch.zeros(args.n_agents, args.hidden_dim).to(device) if args.agent_type == "rnn" else None
+        
         if not args.independent_agents:
-            # 1. Złożenie obserwacji wszystkich agentów w jeden Tensor (batch)
             obs_tensor = torch.tensor(np.array(obs), dtype=torch.float32).to(device)
-            
-            # 2. Przekazanie całego batcha przez wspólną sieć naraz (bardzo szybkie na GPU)
             with torch.no_grad():
-                q_vals = agents[0](obs_tensor) # Wynik ma kształt: [n_agents, n_actions]
+                if args.agent_type == "rnn":
+                    q_vals, next_hiddens = agents[0](obs_tensor, hiddens)
+                else:
+                    q_vals = agents[0](obs_tensor)
                 greedy_actions = q_vals.argmax(dim=1).cpu().numpy()
                 
-            # 3. Złożenie finalnej listy akcji (uwzględnienie losowych akcji eksploracyjnych)
             for i in range(args.n_agents):
                 if explore_mask[i]:
                     actions.append(env.env.action_space[0].sample())
                 else:
                     actions.append(int(greedy_actions[i]))
-                    
         else:
-            # Wersja oryginalna dla agentów, którzy mają oddzielne "mózgi" (nie dzielą wag)
             for i in range(args.n_agents):
                 if explore_mask[i]:
                     actions.append(env.env.action_space[0].sample())
                 else:
                     with torch.no_grad():
                         o_tensor = torch.tensor(obs[i], dtype=torch.float32).unsqueeze(0).to(device)
-                        q_vals = agents[i](o_tensor)
+                        if args.agent_type == "rnn":
+                            q_vals, h_next = agents[i](o_tensor, hiddens[i].unsqueeze(0))
+                            next_hiddens[i] = h_next.squeeze(0)
+                        else:
+                            q_vals = agents[i](o_tensor)
                         actions.append(q_vals.argmax(1).item())
+
         next_obs, next_state, rewards, terminated, truncated, info = env.step(actions)
         episode_reward += sum(rewards)
-
         true_done = float(np.any(terminated))
-        buffer.push(obs, state, actions, rewards, next_obs, next_state, true_done)
+        
+        # Zapisujemy do bufora (w tym stany ukryte RNN jeśli są używane)
+        if args.agent_type == "rnn":
+            buffer.push(obs, state, actions, rewards, next_obs, next_state, true_done,
+                        hiddens=hiddens.cpu().numpy(), next_hiddens=next_hiddens.cpu().numpy())
+            hiddens = next_hiddens
+        else:
+            buffer.push(obs, state, actions, rewards, next_obs, next_state, true_done)
+            
         obs, state = next_obs, next_state
-        done = bool(np.any(terminated) or np.any(truncated))
         
         loss_val = None
         if len(buffer) >= MIN_BUFFER_SIZE:
             batch = buffer.sample(args.batch_size)
             loss_val = learner.update(batch)
-            
             if step % TARGET_UPDATE_INTERVAL == 0:
                 learner.update_targets()
                 
         if np.any(terminated) or np.any(truncated):
             episodes_done += 1
-            
-            # 2. Logowanie metryk treningowych na bieżąco
             metrics_to_log = {
                 "Train/Episode_Reward": episode_reward,
                 "Train/Epsilon": eps,
-                "Global_Step": step
+                "Train/Episodes_Total": episodes_done
             }
             if loss_val is not None:
                 metrics_to_log["Train/Loss"] = loss_val
                 
-            wandb.log(metrics_to_log)
+            # FIX: Przekazujemy step=step do wandb.log
+            wandb.log(metrics_to_log, step=step)
             
             obs, state = env.reset()
             episode_reward = 0
+            if args.agent_type == "rnn":
+                hiddens = torch.zeros(args.n_agents, args.hidden_dim).to(device)
             
-        # 3. Okresowa Ewaluacja (Testowanie modelu)
         if step % args.eval_interval == 0:
-            mean_eval_reward = evaluate_model(args.env_id, args.n_agents, args.n_actions, agents, device, args.eval_episodes)
-            wandb.log({
-                "Eval/Mean_Reward": mean_eval_reward,
-                "Global_Step": step
-            })
+            mean_eval_reward = evaluate_model(args.env_id, args.n_agents, args.n_actions, agents, device, args.eval_episodes, args.agent_type, args.hidden_dim)
+            # FIX: Przekazujemy step=step do wandb.log
+            wandb.log({"Eval/Mean_Reward": mean_eval_reward}, step=step)
             pbar.set_postfix({"Eval Reward": f"{mean_eval_reward:.2f}", "Epsilon": f"{eps:.2f}"})
             
         pbar.update(1)
 
     pbar.close()
-    
-    weights_filename = f"agents_weights_{args.mixer}_{args.explorer}.pth"
+    weights_filename = f"agents_weights_{args.mixer}_{args.explorer}_{args.agent_type}.pth"
     torch.save(agents.state_dict(), weights_filename)
-    
-    # 4. Zakończenie pracy z WandB
     wandb.finish()
 
 if __name__ == "__main__":
