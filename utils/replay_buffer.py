@@ -34,7 +34,31 @@ class ReplayBuffer:
         self.size = min(self.size + 1, self.capacity)
 
     def sample(self, batch_size):
-        idxs = np.random.choice(self.size, batch_size, replace=False)
+        def sample(self, batch_size):
+            # 1. Szukamy indeksów z nagrodami
+            reward_idxs = np.where(self.rewards[:self.size].sum(axis=-1) > 0)[0]
+
+            # 2. DYNAMICZNY LIMIT:
+            # Maksymalnie chcemy 25% batcha...
+            max_rewards_allowed = batch_size // 4
+
+            # ...ale nie pozwalamy na wzięcie więcej, niż mamy UNIKALNYCH nagród w buforze!
+            guaranteed_rewards = min(max_rewards_allowed, len(reward_idxs))
+
+            # 3. Mechanizm Priorytetów
+            if guaranteed_rewards > 0:
+                # Losujemy BEZ zwracania (replace=False), bo wiemy, że mamy wystarczająco unikalnych próbek
+                idx_rewards = np.random.choice(reward_idxs, guaranteed_rewards, replace=False)
+
+                # Resztę dopychamy zwykłymi wspomnieniami
+                remaining_count = batch_size - guaranteed_rewards
+                idx_normal = np.random.choice(self.size, remaining_count, replace=False)
+
+                idxs = np.concatenate((idx_rewards, idx_normal))
+                np.random.shuffle(idxs)
+            else:
+                # Brak nagród w buforze = losujemy klasycznie
+                idxs = np.random.choice(self.size, batch_size, replace=False)
         return dict(
             obs=torch.FloatTensor(self.obs[idxs]),
             states=torch.FloatTensor(self.states[idxs]),
