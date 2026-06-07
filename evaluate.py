@@ -25,17 +25,28 @@ def parse_args():
     parser.add_argument("--agent_type", type=str, default="rnn", choices=["rnn", "mlp"])
     return parser.parse_args()
 
+
 def evaluate():
     args = parse_args()
-    GRID_SIZE = 8
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
+    print(f"Rozpoczynam ewaluację na: {device}")
+    print(f"Środowisko: {args.env_id} | Model z eksploracji: {args.explorer}")
+
+    # 1. Tworzymy środowisko (to ono wie, jakie jest duże)
     raw_env = gym.make(args.env_id)
     env = SimpleEnvWrapper(raw_env, args.n_agents, args.n_actions)
 
+    # 2. NOWOŚĆ: Pobieramy rozmiar bezpośrednio z fizycznej siatki gry!
+    # Jeśli środowisko to 5x5, shape wyniesie (5, 5), więc bierzemy [0], czyli 5.
+    GRID_SIZE = raw_env.unwrapped.field.shape[0]
+
+    # Inicjalizacja sieci agentów (Współdzielenie wag lub oddzielne sieci)
     if args.agent_type == "rnn":
         if args.independent_agents:
-            agents = nn.ModuleList([RNNAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim).to(device) for _ in range(args.n_agents)])
+            agents = nn.ModuleList(
+                [RNNAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim).to(device) for _ in
+                 range(args.n_agents)])
         else:
             shared_agent = RNNAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim).to(device)
             agents = nn.ModuleList([shared_agent for _ in range(args.n_agents)])
