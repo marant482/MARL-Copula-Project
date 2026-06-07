@@ -74,6 +74,7 @@ class QLearner:
             target_agent.load_state_dict(agent.state_dict())
         self.target_mixer.load_state_dict(self.mixer.state_dict())
 
+
     def update_bptt(self, batch):
         obs = batch['obs'].to(self.device)  # (B, T, N, Obs)
         states = batch['states'].to(self.device)  # (B, T, State)
