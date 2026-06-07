@@ -10,7 +10,7 @@ import wandb
 
 from modules.agents import MLPAgent, RNNAgent
 from modules.mixers import QMixMixer, VDNMixer
-from modules.explorers import GaussianCopulaExplorer, EpsilonGreedyExplorer
+from modules.explorers import GaussianCopulaExplorer, EpsilonGreedyExplorer, ActionCopulaSampler
 from envs.wrappers import SimpleEnvWrapper
 from utils.replay_buffer import ReplayBuffer, EpisodicReplayBuffer
 from learners.q_learner import QLearner
@@ -41,6 +41,8 @@ def parse_args():
     # Parametry eksploracji
     parser.add_argument("--explorer", type=str, default="copula", choices=["copula", "epsilon"])
     parser.add_argument("--copula_corr", type=float, default=0.7)
+    parser.add_argument("--action_copula_corr", type=float, default=0.0,
+                        help="Korelacja dla losowanych akcji (0.0 = niezależne losowanie, 1.0 = identyczne akcje)")
     parser.add_argument("--eps_start", type=float, default=1.0)
     parser.add_argument("--eps_end", type=float, default=0.05)
     parser.add_argument("--eps_decay", type=int, default=20000)
@@ -142,6 +144,8 @@ def main():
     else:
         explorer = EpsilonGreedyExplorer(args.n_agents)
 
+    action_sampler = ActionCopulaSampler(args.n_agents, args.n_actions, correlation=args.action_copula_corr)
+
     if args.use_bptt:
         ep_capacity = max(1, args.buffer_size // args.max_steps)
         buffer = EpisodicReplayBuffer(ep_capacity, args.max_steps, args.n_agents, args.obs_dim, STATE_DIM,
@@ -165,14 +169,15 @@ def main():
                         'dones': []}
 
     pbar = tqdm(total=args.total_steps, desc=f"Trening {args.mixer.upper()} ({args.explorer})")
-    
+
     for step in range(1, args.total_steps + 1):
         eps = max(args.eps_end, args.eps_start - (args.eps_start - args.eps_end) * step / args.eps_decay)
         explore_mask = explorer.should_explore(eps)
+        random_actions = action_sampler.sample()
         actions = []
-        
+
         next_hiddens = torch.zeros(args.n_agents, args.hidden_dim).to(device) if args.agent_type == "rnn" else None
-        
+
         if not args.independent_agents:
             obs_tensor = torch.tensor(np.array(obs), dtype=torch.float32).to(device)
             with torch.no_grad():
@@ -181,16 +186,16 @@ def main():
                 else:
                     q_vals = agents[0](obs_tensor)
                 greedy_actions = q_vals.argmax(dim=1).cpu().numpy()
-                
+
             for i in range(args.n_agents):
                 if explore_mask[i]:
-                    actions.append(env.env.action_space[0].sample())
+                    actions.append(random_actions[i])
                 else:
                     actions.append(int(greedy_actions[i]))
         else:
             for i in range(args.n_agents):
                 if explore_mask[i]:
-                    actions.append(env.env.action_space[0].sample())
+                    actions.append(random_actions[i])
                 else:
                     with torch.no_grad():
                         o_tensor = torch.tensor(obs[i], dtype=torch.float32).unsqueeze(0).to(device)
@@ -280,7 +285,6 @@ def main():
     weights_filename = f"agents_weights_{args.mixer}_{args.explorer}_{args.agent_type}.pth"
     torch.save(agents.state_dict(), weights_filename)
     wandb.finish()
-
 
 if __name__ == "__main__":
     main()
