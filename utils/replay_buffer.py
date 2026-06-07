@@ -7,7 +7,7 @@ class ReplayBuffer:
         self.ptr = 0
         self.size = 0
         self.hidden_dim = hidden_dim
-        
+        self.reward_priority = reward_priority
         self.obs = np.zeros((capacity, n_agents, obs_dim), dtype=np.float32)
         self.next_obs = np.zeros((capacity, n_agents, obs_dim), dtype=np.float32)
         self.states = np.zeros((capacity, state_dim), dtype=np.float32)
@@ -45,8 +45,7 @@ class ReplayBuffer:
         reward_idxs = np.where(self.rewards[:self.size].sum(axis=-1) > 0)[0]
 
         # 2. DYNAMICZNY LIMIT:
-        # Maksymalnie chcemy 25% batcha...
-        max_rewards_allowed = batch_size // 4
+        max_rewards_allowed = int(batch_size * self.reward_priority)
 
         # ...ale nie pozwalamy na wzięcie więcej, niż mamy UNIKALNYCH nagród w buforze!
         guaranteed_rewards = min(max_rewards_allowed, len(reward_idxs))
@@ -89,7 +88,7 @@ class EpisodicReplayBuffer:
         self.max_steps = max_steps
         self.ptr = 0
         self.size = 0
-
+        self.reward_priority = reward_priority
         # Wymiary: (Pojemność w epizodach, Czas (T), Agenci, Cechy)
         self.obs = np.zeros((capacity, max_steps, n_agents, obs_dim), dtype=np.float32)
         self.next_obs = np.zeros((capacity, max_steps, n_agents, obs_dim), dtype=np.float32)
@@ -122,7 +121,33 @@ class EpisodicReplayBuffer:
         self.size = min(self.size + 1, self.capacity)
 
     def sample(self, batch_size):
-        idxs = np.random.choice(self.size, batch_size, replace=False)
+        # 1. Szukamy indeksów EPIZODÓW, w których padła jakakolwiek nagroda
+        # self.rewards ma kształt (capacity, max_steps, 1), więc sumujemy po czasie (axis=1) i wartościach (axis=2)
+        episode_rewards = self.rewards[:self.size].sum(axis=(1, 2))
+        reward_idxs = np.where(episode_rewards > 0)[0]
+
+        # 2. DYNAMICZNY LIMIT wyliczany z proporcji:
+        max_rewards_allowed = int(batch_size * self.reward_priority)
+
+        # ...ale nie pozwalamy na wzięcie więcej, niż mamy UNIKALNYCH epizodów z nagrodą w buforze
+        guaranteed_rewards = min(max_rewards_allowed, len(reward_idxs))
+
+        # 3. Mechanizm Priorytetów
+        if guaranteed_rewards > 0:
+            # Losujemy epizody z nagrodą BEZ zwracania
+            idx_rewards = np.random.choice(reward_idxs, guaranteed_rewards, replace=False)
+
+            # Resztę dopychamy zwykłymi (często pustymi) epizodami z całej puli
+            remaining_count = batch_size - guaranteed_rewards
+            idx_normal = np.random.choice(self.size, remaining_count, replace=False)
+
+            idxs = np.concatenate((idx_rewards, idx_normal))
+            np.random.shuffle(idxs)
+        else:
+            # Brak jakichkolwiek nagród w buforze = losujemy całkowicie klasycznie
+            idxs = np.random.choice(self.size, batch_size, replace=False)
+
+        # Zwracamy wycięty batch epizodów jako słownik tensorów
         return dict(
             obs=torch.FloatTensor(self.obs[idxs]),
             states=torch.FloatTensor(self.states[idxs]),

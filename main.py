@@ -53,6 +53,8 @@ def parse_args():
     parser.add_argument("--independent_agents", action="store_true")
     parser.add_argument("--grad_clip", type=float, default=10.0)
     parser.add_argument("--target_update", type=int, default=5000)
+    parser.add_argument("--reward_priority", type=float, default=0.25,
+                        help="Odsetek batcha (0.0 do 1.0) rezerwowany dla kroków/epizodów z nagrodą. Ustawienie na 0.0 całkowicie wyłącza ten mechanizm.")
 
     # Parametry architektury sieci
     parser.add_argument("--agent_type", type=str, default="rnn", choices=["rnn", "mlp"], help="Typ sieci agenta (domyślnie rnn)")
@@ -141,12 +143,13 @@ def main():
         explorer = EpsilonGreedyExplorer(args.n_agents)
 
     if args.use_bptt:
-        # W BPTT bufor mierzy się w ilości epizodów a nie kroków
         ep_capacity = max(1, args.buffer_size // args.max_steps)
-        buffer = EpisodicReplayBuffer(ep_capacity, args.max_steps, args.n_agents, args.obs_dim, STATE_DIM)
+        buffer = EpisodicReplayBuffer(ep_capacity, args.max_steps, args.n_agents, args.obs_dim, STATE_DIM,
+                                      reward_priority=args.reward_priority)
         min_buffer_size = max(1, MIN_BUFFER_SIZE // args.max_steps)
     else:
-        buffer = ReplayBuffer(args.buffer_size, args.n_agents, args.obs_dim, STATE_DIM, hidden_dim=args.hidden_dim)
+        buffer = ReplayBuffer(args.buffer_size, args.n_agents, args.obs_dim, STATE_DIM, hidden_dim=args.hidden_dim,
+                              reward_priority=args.reward_priority)
         min_buffer_size = MIN_BUFFER_SIZE
     learner = QLearner(agents, mixer, target_agents, target_mixer, optimizer, args.gamma, device, grad_clip=args.grad_clip)
     
