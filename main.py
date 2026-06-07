@@ -74,18 +74,20 @@ def evaluate_model(env_id, n_agents, n_actions, agents, device, eval_episodes, a
         obs, _ = eval_env.reset()
         done = False
         ep_reward = 0
-        
+
         if agent_type == "rnn":
-            hiddens = torch.zeros(n_agents, hidden_dim).to(device)
-        
+            # Dodany 1 wymiar na początku: (1, Agenci, Hidden)
+            hiddens = torch.zeros(1, n_agents, hidden_dim).to(device)
+
         while not done:
             actions = []
             for i in range(n_agents):
                 with torch.no_grad():
                     o_tensor = torch.tensor(obs[i], dtype=torch.float32).unsqueeze(0).to(device)
                     if agent_type == "rnn":
-                        q_vals, h_next = agents[i](o_tensor, hiddens[i].unsqueeze(0))
-                        hiddens[i] = h_next.squeeze(0)
+                        # Wycinanie 3-wymiarowego kawałka dla konkretnego agenta
+                        q_vals, h_next = agents[i](o_tensor, hiddens[:, i:i + 1, :])
+                        hiddens[:, i:i + 1, :] = h_next
                     else:
                         q_vals = agents[i](o_tensor)
                     actions.append(q_vals.argmax(1).item())

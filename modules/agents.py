@@ -37,6 +37,8 @@ class RNNAgent(nn.Module):
             nn.init.constant_(m.bias, 0.0)
 
     def forward(self, obs, hidden):
+        # Ta linijka naprawi czerwone ostrzeżenie w konsoli
+        self.rnn.flatten_parameters()
         # Automatyczne wykrywanie, czy to pojedynczy krok czy cały epizod z BPTT
         if len(obs.shape) == 2:
             # Gra (pojedynczy krok): Zmieniamy (Batch, Obs) na (Batch, 1_krok, Obs)
