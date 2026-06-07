@@ -74,7 +74,6 @@ class QLearner:
             target_agent.load_state_dict(agent.state_dict())
         self.target_mixer.load_state_dict(self.mixer.state_dict())
 
-
     def update_bptt(self, batch):
         obs = batch['obs'].to(self.device)  # (B, T, N, Obs)
         states = batch['states'].to(self.device)  # (B, T, State)
@@ -87,12 +86,13 @@ class QLearner:
 
         B, T, N, _ = obs.shape
 
-        # Pobieramy wielkość ukrytego stanu (domyślnie zakładamy 128)
+        # Pobieramy wielkość ukrytego stanu z modelu agenta
         hidden_dim = getattr(self.agents[0], 'hidden_dim', 128)
 
-        # W BPTT stany ukryte RNN inicjujemy zawsze zerami na początku epizodu (t=0)
-        hiddens = torch.zeros(B, N, hidden_dim).to(self.device)
-        target_hiddens = torch.zeros(B, N, hidden_dim).to(self.device)
+        # POPRAWKA: Zamiast jednego tensora modyfikowanego w miejscu (inplace),
+        # używamy listy niezależnych tensorów dla każdego agenta.
+        hiddens = [torch.zeros(B, hidden_dim).to(self.device) for _ in range(N)]
+        target_hiddens = [torch.zeros(B, hidden_dim).to(self.device) for _ in range(N)]
 
         mac_out = []
         target_mac_out = []
@@ -107,20 +107,20 @@ class QLearner:
 
                 # Aktualne wartości Q
                 if hasattr(agent, "rnn"):
-                    q_vals, hiddens[:, i, :] = agent(obs[:, t, i, :], hiddens[:, i, :])
+                    # Podmieniamy obiekt w liście - bezpieczne dla grafu PyTorch!
+                    q_vals, hiddens[i] = agent(obs[:, t, i, :], hiddens[i])
                 else:
                     q_vals = agent(obs[:, t, i, :])
-                chosen_q = q_vals.gather(1, actions[:, t, i:i + 1]).squeeze(1)  # Wybrana akcja (B)
+                chosen_q = q_vals.gather(1, actions[:, t, i:i + 1]).squeeze(1)
                 agent_qs_t.append(chosen_q)
 
                 # Target Q-values
                 with torch.no_grad():
                     if hasattr(target_agent, "rnn"):
-                        target_q_vals, target_hiddens[:, i, :] = target_agent(next_obs[:, t, i, :],
-                                                                              target_hiddens[:, i, :])
+                        target_q_vals, target_hiddens[i] = target_agent(next_obs[:, t, i, :], target_hiddens[i])
                     else:
                         target_q_vals = target_agent(next_obs[:, t, i, :])
-                    max_target_q = target_q_vals.max(dim=1)[0]  # Maksymalna wartość docelowa
+                    max_target_q = target_q_vals.max(dim=1)[0]
                     target_agent_qs_t.append(max_target_q)
 
             mac_out.append(torch.stack(agent_qs_t, dim=1))  # -> (B, N)
@@ -130,7 +130,7 @@ class QLearner:
         mac_out = torch.stack(mac_out, dim=1)  # (B, T, N)
         target_mac_out = torch.stack(target_mac_out, dim=1)  # (B, T, N)
 
-        # Spłaszczanie na potrzeby Mixera, który zazwyczaj przyjmuje kształt (Batch, N)
+        # Spłaszczanie na potrzeby Mixera
         mac_out_flat = mac_out.reshape(B * T, N)
         states_flat = states.reshape(B * T, -1)
         q_tot_flat = self.mixer(mac_out_flat, states_flat)
@@ -145,12 +145,16 @@ class QLearner:
         # TD Target
         targets = rewards + self.gamma * (1 - dones) * target_q_tot
 
-        # Obliczanie straty z zastosowaniem MASKI (ignorujemy padding z bufora epizodycznego)
+        # Obliczanie straty z zastosowaniem MASKI
         td_error = (q_tot - targets.detach())
         masked_td_error = td_error * mask
 
-        # Loss tylko dla odnotowanych akcji
-        loss = (masked_td_error ** 2).sum() / mask.sum()
+        # Loss tylko dla odnotowanych akcji (chroni nas przed zerowym dzieleniem, jeśli mask.sum() byłoby 0)
+        mask_sum = mask.sum()
+        if mask_sum > 0:
+            loss = (masked_td_error ** 2).sum() / mask_sum
+        else:
+            loss = (masked_td_error ** 2).sum()  # Fallback
 
         self.optimizer.zero_grad()
         loss.backward()
