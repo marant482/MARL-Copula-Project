@@ -81,3 +81,58 @@ class ReplayBuffer:
         )
     def __len__(self):
         return self.size
+
+
+class EpisodicReplayBuffer:
+    def __init__(self, capacity, max_steps, n_agents, obs_dim, state_dim):
+        self.capacity = capacity
+        self.max_steps = max_steps
+        self.ptr = 0
+        self.size = 0
+
+        # Wymiary: (Pojemność w epizodach, Czas (T), Agenci, Cechy)
+        self.obs = np.zeros((capacity, max_steps, n_agents, obs_dim), dtype=np.float32)
+        self.next_obs = np.zeros((capacity, max_steps, n_agents, obs_dim), dtype=np.float32)
+        self.states = np.zeros((capacity, max_steps, state_dim), dtype=np.float32)
+        self.next_states = np.zeros((capacity, max_steps, state_dim), dtype=np.float32)
+        self.actions = np.zeros((capacity, max_steps, n_agents), dtype=np.int64)
+        self.rewards = np.zeros((capacity, max_steps, 1), dtype=np.float32)
+        self.dones = np.zeros((capacity, max_steps, 1), dtype=np.float32)
+        # Maska do ignorowania paddingu przy wyliczaniu loss
+        self.mask = np.zeros((capacity, max_steps, 1), dtype=np.float32)
+
+    def push_episode(self, episode_data):
+        idx = self.ptr
+        T = min(len(episode_data['obs']), self.max_steps)
+
+        # Czyszczenie maski dla nadpisywanego epizodu
+        self.mask[idx] = 0.0
+
+        for t in range(T):
+            self.obs[idx, t] = episode_data['obs'][t]
+            self.states[idx, t] = episode_data['states'][t]
+            self.actions[idx, t] = episode_data['actions'][t]
+            self.rewards[idx, t] = episode_data['rewards'][t]
+            self.next_obs[idx, t] = episode_data['next_obs'][t]
+            self.next_states[idx, t] = episode_data['next_states'][t]
+            self.dones[idx, t] = episode_data['dones'][t]
+            self.mask[idx, t] = 1.0  # 1.0 oznacza rzeczywisty krok
+
+        self.ptr = (self.ptr + 1) % self.capacity
+        self.size = min(self.size + 1, self.capacity)
+
+    def sample(self, batch_size):
+        idxs = np.random.choice(self.size, batch_size, replace=False)
+        return dict(
+            obs=torch.FloatTensor(self.obs[idxs]),
+            states=torch.FloatTensor(self.states[idxs]),
+            actions=torch.LongTensor(self.actions[idxs]),
+            rewards=torch.FloatTensor(self.rewards[idxs]),
+            next_obs=torch.FloatTensor(self.next_obs[idxs]),
+            next_states=torch.FloatTensor(self.next_states[idxs]),
+            dones=torch.FloatTensor(self.dones[idxs]),
+            mask=torch.FloatTensor(self.mask[idxs])
+        )
+
+    def __len__(self):
+        return self.size

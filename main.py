@@ -12,8 +12,9 @@ from modules.agents import MLPAgent, RNNAgent
 from modules.mixers import QMixMixer, VDNMixer
 from modules.explorers import GaussianCopulaExplorer, EpsilonGreedyExplorer
 from envs.wrappers import SimpleEnvWrapper
-from utils.replay_buffer import ReplayBuffer
+from utils.replay_buffer import ReplayBuffer, EpisodicReplayBuffer
 from learners.q_learner import QLearner
+
 
 import lbforaging
 
@@ -33,6 +34,9 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--mixer", type=str, default="qmix", choices=["qmix", "vdn"])
+    parser.add_argument("--use_bptt", action="store_true",
+                        help="Używaj Episodic Buffer i Backpropagation Through Time dla sieci RNN")
+    parser.add_argument("--max_steps", type=int, default=50, help="Maksymalna długość epizodu w Episodic Buffer")
     
     # Parametry eksploracji
     parser.add_argument("--explorer", type=str, default="copula", choices=["copula", "epsilon"])
@@ -135,8 +139,15 @@ def main():
         explorer = GaussianCopulaExplorer(args.n_agents, correlation=args.copula_corr)
     else:
         explorer = EpsilonGreedyExplorer(args.n_agents)
-    
-    buffer = ReplayBuffer(args.buffer_size, args.n_agents, args.obs_dim, STATE_DIM, hidden_dim=args.hidden_dim)
+
+    if args.use_bptt:
+        # W BPTT bufor mierzy się w ilości epizodów a nie kroków
+        ep_capacity = max(1, args.buffer_size // args.max_steps)
+        buffer = EpisodicReplayBuffer(ep_capacity, args.max_steps, args.n_agents, args.obs_dim, STATE_DIM)
+        min_buffer_size = max(1, MIN_BUFFER_SIZE // args.max_steps)
+    else:
+        buffer = ReplayBuffer(args.buffer_size, args.n_agents, args.obs_dim, STATE_DIM, hidden_dim=args.hidden_dim)
+        min_buffer_size = MIN_BUFFER_SIZE
     learner = QLearner(agents, mixer, target_agents, target_mixer, optimizer, args.gamma, device, grad_clip=args.grad_clip)
     
     obs, state = env.reset()
@@ -145,7 +156,11 @@ def main():
     
     # Inicjalizacja stanów ukrytych dla pierwszego epizodu
     hiddens = torch.zeros(args.n_agents, args.hidden_dim).to(device) if args.agent_type == "rnn" else None
-    
+
+    if args.use_bptt:
+        episode_data = {'obs': [], 'states': [], 'actions': [], 'rewards': [], 'next_obs': [], 'next_states': [],
+                        'dones': []}
+
     pbar = tqdm(total=args.total_steps, desc=f"Trening {args.mixer.upper()} ({args.explorer})")
     
     for step in range(1, args.total_steps + 1):
@@ -186,21 +201,49 @@ def main():
         next_obs, next_state, rewards, terminated, truncated, info = env.step(actions)
         episode_reward += sum(rewards)
         true_done = float(np.any(terminated))
-        
-        # Zapisujemy do bufora (w tym stany ukryte RNN jeśli są używane)
-        if args.agent_type == "rnn":
-            buffer.push(obs, state, actions, rewards, next_obs, next_state, true_done,
-                        hiddens=hiddens.cpu().numpy(), next_hiddens=next_hiddens.cpu().numpy())
-            hiddens = next_hiddens
+
+        # Zapisujemy do bufora
+        if args.use_bptt:
+            # Używamy BPTT - budujemy epizod zanim wyślemy do bufora
+            episode_data['obs'].append(obs)
+            episode_data['states'].append(state)
+            episode_data['actions'].append(actions)
+            global_reward = sum(rewards) if isinstance(rewards, (list, np.ndarray)) else rewards
+            episode_data['rewards'].append([global_reward])
+            episode_data['next_obs'].append(next_obs)
+            episode_data['next_states'].append(next_state)
+            episode_data['dones'].append([true_done])
+
+            if np.any(terminated) or np.any(truncated):
+                buffer.push_episode(episode_data)
+                # Restart pojemnika na nowy epizod
+                episode_data = {'obs': [], 'states': [], 'actions': [], 'rewards': [], 'next_obs': [],
+                                'next_states': [], 'dones': []}
+
+            if args.agent_type == "rnn":
+                hiddens = next_hiddens
         else:
-            buffer.push(obs, state, actions, rewards, next_obs, next_state, true_done)
-            
+            # Standardowy RL krok po kroku
+            if args.agent_type == "rnn":
+                buffer.push(obs, state, actions, rewards, next_obs, next_state, true_done,
+                            hiddens=hiddens.cpu().numpy(), next_hiddens=next_hiddens.cpu().numpy())
+                hiddens = next_hiddens
+            else:
+                buffer.push(obs, state, actions, rewards, next_obs, next_state, true_done)
+
         obs, state = next_obs, next_state
         
         loss_val = None
-        if len(buffer) >= MIN_BUFFER_SIZE:
-            batch = buffer.sample(args.batch_size)
-            loss_val = learner.update(batch)
+        # Jeśli używamy BPTT, batch_size oznacza liczbę całych epizodów pobieranych do treningu na raz.
+        current_batch_size = min(args.batch_size, len(buffer)) if args.use_bptt else args.batch_size
+
+        if len(buffer) >= min_buffer_size:
+            batch = buffer.sample(current_batch_size)
+            if args.use_bptt:
+                loss_val = learner.update_bptt(batch)
+            else:
+                loss_val = learner.update(batch)
+
             if step % TARGET_UPDATE_INTERVAL == 0:
                 learner.update_targets()
                 
