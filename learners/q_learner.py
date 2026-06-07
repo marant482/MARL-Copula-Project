@@ -91,20 +91,38 @@ class QLearner:
         obs_flat = obs.transpose(1, 2).reshape(B * N, T, Obs_Dim)
         next_obs_flat = next_obs.transpose(1, 2).reshape(B * N, T, Obs_Dim)
 
-        # Inicjalizacja ukrytych stanów wejściowych dla warstwy GRU
+        # Inicjalizacja ukrytych stanów wejściowych dla warstwy GRU (dla sieci uczącej się)
         h0 = torch.zeros(1, B * N, hidden_dim).to(self.device)
 
         # 2. Błyskawiczne obliczenia Q dla wszystkich agentów naraz
-        q_vals_flat, _ = self.agents[0](obs_flat, h0)
-        q_vals = q_vals_flat.reshape(B, N, T, -1).transpose(1, 2) # Powrót do (B, T, N, Actions)
-        chosen_q = q_vals.gather(3, actions.unsqueeze(-1)).squeeze(-1) # (B, T, N)
+        if hasattr(self.agents[0], "rnn"):
+            q_vals_flat, _ = self.agents[0](obs_flat, h0)
+        else:
+            q_vals_flat = self.agents[0](obs_flat)
 
+        q_vals = q_vals_flat.reshape(B, N, T, -1).transpose(1, 2)
+        chosen_q = q_vals.gather(3, actions.unsqueeze(-1)).squeeze(-1)  # (B, T, N)
+
+        # --- POPRAWKA TARGET RNN (Usunięcie Amnezji Czasowej) ---
         with torch.no_grad():
-            target_q_vals_flat, _ = self.target_agents[0](next_obs_flat, h0)
-            target_q_vals = target_q_vals_flat.reshape(B, N, T, -1).transpose(1, 2)
-            max_target_q = target_q_vals.max(dim=3)[0] # (B, T, N)
+            if hasattr(self.target_agents[0], "rnn"):
+                # Krok 1: Przepuszczamy pierwszą obserwację (t=0) przez Target RNN,
+                # aby wygenerować prawidłowy stan ukryty h1.
+                obs_t0 = obs_flat[:, 0, :].unsqueeze(1)
+                _, h1_target = self.target_agents[0](obs_t0, h0)
 
-        # 3. Przepuszczenie przez Mixery
+                # Krok 2: Liczymy docelowe Q dla sekwencji next_obs,
+                # ale używamy PRAWIDŁOWEGO historycznego stanu ukrytego (h1_target)
+                target_q_vals_flat, _ = self.target_agents[0](next_obs_flat, h1_target)
+            else:
+                # Zabezpieczenie dla zwykłych sieci MLP
+                target_q_vals_flat = self.target_agents[0](next_obs_flat)
+
+            target_q_vals = target_q_vals_flat.reshape(B, N, T, -1).transpose(1, 2)
+            max_target_q = target_q_vals.max(dim=3)[0]  # (B, T, N)
+        # --------------------------------------------------------
+
+        # Przepuszczenie przez Mixery
         q_tot_flat = self.mixer(chosen_q.reshape(B * T, N), states.reshape(B * T, -1))
         q_tot = q_tot_flat.reshape(B, T, 1)
 
