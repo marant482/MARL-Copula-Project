@@ -84,77 +84,44 @@ class QLearner:
         dones = batch['dones'].to(self.device)  # (B, T, 1)
         mask = batch['mask'].to(self.device)  # (B, T, 1)
 
-        B, T, N, _ = obs.shape
-
-        # Pobieramy wielkość ukrytego stanu z modelu agenta
+        B, T, N, Obs_Dim = obs.shape
         hidden_dim = getattr(self.agents[0], 'hidden_dim', 128)
 
-        # POPRAWKA: Zamiast jednego tensora modyfikowanego w miejscu (inplace),
-        # używamy listy niezależnych tensorów dla każdego agenta.
-        hiddens = [torch.zeros(B, hidden_dim).to(self.device) for _ in range(N)]
-        target_hiddens = [torch.zeros(B, hidden_dim).to(self.device) for _ in range(N)]
+        # 1. Spłaszczamy na jeden gigantyczny batch, aby ominąć pętle (B*N, T, Obs)
+        obs_flat = obs.transpose(1, 2).reshape(B * N, T, Obs_Dim)
+        next_obs_flat = next_obs.transpose(1, 2).reshape(B * N, T, Obs_Dim)
 
-        mac_out = []
-        target_mac_out = []
+        # Inicjalizacja ukrytych stanów wejściowych dla warstwy GRU
+        h0 = torch.zeros(1, B * N, hidden_dim).to(self.device)
 
-        # Rozwijamy sieć w czasie krok po kroku (Unrolling BPTT)
-        for t in range(T):
-            agent_qs_t = []
-            target_agent_qs_t = []
-            for i in range(N):
-                agent = self.agents[i]
-                target_agent = self.target_agents[i]
-
-                # Aktualne wartości Q
-                if hasattr(agent, "rnn"):
-                    # Podmieniamy obiekt w liście - bezpieczne dla grafu PyTorch!
-                    q_vals, hiddens[i] = agent(obs[:, t, i, :], hiddens[i])
-                else:
-                    q_vals = agent(obs[:, t, i, :])
-                chosen_q = q_vals.gather(1, actions[:, t, i:i + 1]).squeeze(1)
-                agent_qs_t.append(chosen_q)
-
-                # Target Q-values
-                with torch.no_grad():
-                    if hasattr(target_agent, "rnn"):
-                        target_q_vals, target_hiddens[i] = target_agent(next_obs[:, t, i, :], target_hiddens[i])
-                    else:
-                        target_q_vals = target_agent(next_obs[:, t, i, :])
-                    max_target_q = target_q_vals.max(dim=1)[0]
-                    target_agent_qs_t.append(max_target_q)
-
-            mac_out.append(torch.stack(agent_qs_t, dim=1))  # -> (B, N)
-            target_mac_out.append(torch.stack(target_agent_qs_t, dim=1))  # -> (B, N)
-
-        # Składanie trajektorii czasowej
-        mac_out = torch.stack(mac_out, dim=1)  # (B, T, N)
-        target_mac_out = torch.stack(target_mac_out, dim=1)  # (B, T, N)
-
-        # Spłaszczanie na potrzeby Mixera
-        mac_out_flat = mac_out.reshape(B * T, N)
-        states_flat = states.reshape(B * T, -1)
-        q_tot_flat = self.mixer(mac_out_flat, states_flat)
-        q_tot = q_tot_flat.reshape(B, T, 1)  # Przywrócenie czasowego kształtu
+        # 2. Błyskawiczne obliczenia Q dla wszystkich agentów naraz
+        q_vals_flat, _ = self.agents[0](obs_flat, h0)
+        q_vals = q_vals_flat.reshape(B, N, T, -1).transpose(1, 2) # Powrót do (B, T, N, Actions)
+        chosen_q = q_vals.gather(3, actions.unsqueeze(-1)).squeeze(-1) # (B, T, N)
 
         with torch.no_grad():
-            target_mac_out_flat = target_mac_out.reshape(B * T, N)
-            next_states_flat = next_states.reshape(B * T, -1)
-            target_q_tot_flat = self.target_mixer(target_mac_out_flat, next_states_flat)
+            target_q_vals_flat, _ = self.target_agents[0](next_obs_flat, h0)
+            target_q_vals = target_q_vals_flat.reshape(B, N, T, -1).transpose(1, 2)
+            max_target_q = target_q_vals.max(dim=3)[0] # (B, T, N)
+
+        # 3. Przepuszczenie przez Mixery
+        q_tot_flat = self.mixer(chosen_q.reshape(B * T, N), states.reshape(B * T, -1))
+        q_tot = q_tot_flat.reshape(B, T, 1)
+
+        with torch.no_grad():
+            target_q_tot_flat = self.target_mixer(max_target_q.reshape(B * T, N), next_states.reshape(B * T, -1))
             target_q_tot = target_q_tot_flat.reshape(B, T, 1)
 
-        # TD Target
+        # 4. TD-Error i maskowanie
         targets = rewards + self.gamma * (1 - dones) * target_q_tot
-
-        # Obliczanie straty z zastosowaniem MASKI
         td_error = (q_tot - targets.detach())
         masked_td_error = td_error * mask
 
-        # Loss tylko dla odnotowanych akcji (chroni nas przed zerowym dzieleniem, jeśli mask.sum() byłoby 0)
         mask_sum = mask.sum()
         if mask_sum > 0:
             loss = (masked_td_error ** 2).sum() / mask_sum
         else:
-            loss = (masked_td_error ** 2).sum()  # Fallback
+            loss = (masked_td_error ** 2).sum()
 
         self.optimizer.zero_grad()
         loss.backward()

@@ -162,7 +162,7 @@ def main():
     episodes_done = 0
     
     # Inicjalizacja stanów ukrytych dla pierwszego epizodu
-    hiddens = torch.zeros(args.n_agents, args.hidden_dim).to(device) if args.agent_type == "rnn" else None
+    hiddens = torch.zeros(1, args.n_agents, args.hidden_dim).to(device) if args.agent_type == "rnn" else None
 
     if args.use_bptt:
         episode_data = {'obs': [], 'states': [], 'actions': [], 'rewards': [], 'next_obs': [], 'next_states': [],
@@ -176,7 +176,7 @@ def main():
         random_actions = action_sampler.sample()
         actions = []
 
-        next_hiddens = torch.zeros(args.n_agents, args.hidden_dim).to(device) if args.agent_type == "rnn" else None
+        next_hiddens = torch.zeros(1, args.n_agents, args.hidden_dim).to(device) if args.agent_type == "rnn" else None
 
         if not args.independent_agents:
             obs_tensor = torch.tensor(np.array(obs), dtype=torch.float32).to(device)
@@ -200,8 +200,9 @@ def main():
                     with torch.no_grad():
                         o_tensor = torch.tensor(obs[i], dtype=torch.float32).unsqueeze(0).to(device)
                         if args.agent_type == "rnn":
-                            q_vals, h_next = agents[i](o_tensor, hiddens[i].unsqueeze(0))
-                            next_hiddens[i] = h_next.squeeze(0)
+                            # Wycięcie stanu ukrytego tylko dla konkretnego agenta
+                            q_vals, h_next = agents[i](o_tensor, hiddens[:, i:i + 1, :])
+                            next_hiddens[:, i:i + 1, :] = h_next
                         else:
                             q_vals = agents[i](o_tensor)
                         actions.append(q_vals.argmax(1).item())
@@ -211,8 +212,9 @@ def main():
         true_done = float(np.any(terminated))
 
         # Zapisujemy do bufora
+        loss_val = None
+
         if args.use_bptt:
-            # Używamy BPTT - budujemy epizod zanim wyślemy do bufora
             episode_data['obs'].append(obs)
             episode_data['states'].append(state)
             episode_data['actions'].append(actions)
@@ -224,37 +226,41 @@ def main():
 
             if np.any(terminated) or np.any(truncated):
                 buffer.push_episode(episode_data)
-                # Restart pojemnika na nowy epizod
                 episode_data = {'obs': [], 'states': [], 'actions': [], 'rewards': [], 'next_obs': [],
                                 'next_states': [], 'dones': []}
+
+                # === KLUCZOWA ZMIANA: Trenujemy tylko po zapisaniu epizodu! ===
+                if len(buffer) >= min_buffer_size:
+                    current_batch_size = min(args.batch_size, len(buffer))
+                    batch = buffer.sample(current_batch_size)
+                    loss_val = learner.update_bptt(batch)
+
+                    if step % TARGET_UPDATE_INTERVAL == 0:
+                        learner.update_targets()
 
             if args.agent_type == "rnn":
                 hiddens = next_hiddens
         else:
-            # Standardowy RL krok po kroku
+            # Tryb MLP krok-po-kroku
             if args.agent_type == "rnn":
                 buffer.push(obs, state, actions, rewards, next_obs, next_state, true_done,
-                            hiddens=hiddens.cpu().numpy(), next_hiddens=next_hiddens.cpu().numpy())
+                            hiddens=hiddens.squeeze(0).cpu().numpy(),
+                            next_hiddens=next_hiddens.squeeze(0).cpu().numpy())
                 hiddens = next_hiddens
             else:
                 buffer.push(obs, state, actions, rewards, next_obs, next_state, true_done)
 
-        obs, state = next_obs, next_state
-        
-        loss_val = None
-        # Jeśli używamy BPTT, batch_size oznacza liczbę całych epizodów pobieranych do treningu na raz.
-        current_batch_size = min(args.batch_size, len(buffer)) if args.use_bptt else args.batch_size
-
-        if len(buffer) >= min_buffer_size:
-            batch = buffer.sample(current_batch_size)
-            if args.use_bptt:
-                loss_val = learner.update_bptt(batch)
-            else:
+            # Trening MLP co każdy krok gry
+            if len(buffer) >= min_buffer_size:
+                batch = buffer.sample(args.batch_size)
                 loss_val = learner.update(batch)
 
-            if step % TARGET_UPDATE_INTERVAL == 0:
-                learner.update_targets()
-                
+                if step % TARGET_UPDATE_INTERVAL == 0:
+                    learner.update_targets()
+
+        obs, state = next_obs, next_state
+
+        # Zapis logów do WandB na koniec epizodu
         if np.any(terminated) or np.any(truncated):
             episodes_done += 1
             metrics_to_log = {
@@ -264,14 +270,13 @@ def main():
             }
             if loss_val is not None:
                 metrics_to_log["Train/Loss"] = loss_val
-                
-            # FIX: Przekazujemy step=step do wandb.log
+
             wandb.log(metrics_to_log, step=step)
-            
+
             obs, state = env.reset()
             episode_reward = 0
             if args.agent_type == "rnn":
-                hiddens = torch.zeros(args.n_agents, args.hidden_dim).to(device)
+                hiddens = torch.zeros(1, args.n_agents, args.hidden_dim).to(device)
             
         if step % args.eval_interval == 0:
             mean_eval_reward = evaluate_model(args.env_id, args.n_agents, args.n_actions, agents, device, args.eval_episodes, args.agent_type, args.hidden_dim)
