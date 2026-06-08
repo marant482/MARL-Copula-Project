@@ -17,6 +17,17 @@ from learners.q_learner import QLearner
 
 
 import lbforaging
+import random
+
+def set_seed(seed: int): #dodał MP
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    # Zapewnia deterministyczne operacje na GPU (może minimalnie zwolnić trening, ale gwarantuje powtarzalność)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Trening MARL z Kopulą Gaussa")
@@ -28,6 +39,7 @@ def parse_args():
     parser.add_argument("--obs_dim", type=int, default=12)
     
     # Parametry treningu
+    parser.add_argument("--seed", type=int, default=42) #dodał MP
     parser.add_argument("--total_steps", type=int, default=50000)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--buffer_size", type=int, default=10000)
@@ -103,11 +115,17 @@ def evaluate_model(env_id, n_agents, n_actions, agents, device, eval_episodes, a
 def main():
     args = parse_args()
     
+    # USTAWIANIE SEEDA NA SAMYM POCZĄTKU
+    
+    # dodał MP
+    set_seed(args.seed)
+    
     wandb.init(
         project="MARL-Copula-Project",
-        name=f"{args.env_id}_{args.mixer}_{args.explorer}_{args.agent_type}_rho{args.copula_corr}",
+        name=f"{args.env_id}_{args.mixer}_{args.explorer}_{args.agent_type}_seed{args.seed}", # Opcjonalnie dodaj seed do nazwy w wandb
         config=vars(args)
     )
+    #--------------
     
     STATE_DIM = args.obs_dim * args.n_agents
     TARGET_UPDATE_INTERVAL = args.target_update
