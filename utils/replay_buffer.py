@@ -54,12 +54,17 @@ class ReplayBuffer:
 
         # 3. Mechanizm Priorytetów
         if guaranteed_rewards > 0:
-            # Losujemy BEZ zwracania (replace=False), bo wiemy, że mamy wystarczająco unikalnych próbek
             idx_rewards = np.random.choice(reward_idxs, guaranteed_rewards, replace=False)
 
-            # Resztę dopychamy zwykłymi wspomnieniami
+            # Resztę dopychamy zwykłymi wspomnieniami, ale Z POMINIĘCIEM już wylosowanych idx_rewards (aby uniknąć duplikatów)
             remaining_count = batch_size - guaranteed_rewards
-            idx_normal = np.random.choice(self.size, remaining_count, replace=False)
+            available_normal_idxs = np.setdiff1d(np.arange(self.size), idx_rewards)
+
+            if len(available_normal_idxs) >= remaining_count:
+                idx_normal = np.random.choice(available_normal_idxs, remaining_count, replace=False)
+            else:
+                idx_normal = np.random.choice(self.size, remaining_count,
+                                              replace=True)  # Ratunkowy fallback dla małych buforów
 
             idxs = np.concatenate((idx_rewards, idx_normal))
             np.random.shuffle(idxs)
@@ -108,8 +113,15 @@ class EpisodicReplayBuffer:
         idx = self.ptr
         T = min(len(episode_data['obs']), self.max_steps)
 
-        # Czyszczenie maski dla nadpisywanego epizodu
+        # Twarde wyczyszczenie całej tablicy na wypadek, gdyby poprzedni epizod był dłuższy (usuwa śmieci w paddingu)
         self.mask[idx] = 0.0
+        self.obs[idx] = 0.0
+        self.states[idx] = 0.0
+        self.actions[idx] = 0
+        self.rewards[idx] = 0.0
+        self.next_obs[idx] = 0.0
+        self.next_states[idx] = 0.0
+        self.dones[idx] = 0.0
 
         for t in range(T):
             self.obs[idx, t] = episode_data['obs'][t]
@@ -138,12 +150,16 @@ class EpisodicReplayBuffer:
 
         # 3. Mechanizm Priorytetów
         if guaranteed_rewards > 0:
-            # Losujemy epizody z nagrodą BEZ zwracania
             idx_rewards = np.random.choice(reward_idxs, guaranteed_rewards, replace=False)
 
-            # Resztę dopychamy zwykłymi (często pustymi) epizodami z całej puli
             remaining_count = batch_size - guaranteed_rewards
-            idx_normal = np.random.choice(self.size, remaining_count, replace=False)
+            # Blokujemy wylosowanie tych samych epizodów, by batch był całkowicie zróżnicowany (IID)
+            available_normal_idxs = np.setdiff1d(np.arange(self.size), idx_rewards)
+
+            if len(available_normal_idxs) >= remaining_count:
+                idx_normal = np.random.choice(available_normal_idxs, remaining_count, replace=False)
+            else:
+                idx_normal = np.random.choice(self.size, remaining_count, replace=True)
 
             idxs = np.concatenate((idx_rewards, idx_normal))
             np.random.shuffle(idxs)

@@ -73,7 +73,7 @@ def evaluate():
     step = 0
 
     if args.agent_type == "rnn":
-        hiddens = torch.zeros(args.n_agents, args.hidden_dim).to(device)
+        hiddens = torch.zeros(1, args.n_agents, args.hidden_dim).to(device)
 
     print("Renderowanie animacji...")
     while not done and step < args.max_steps:
@@ -109,8 +109,9 @@ def evaluate():
             with torch.no_grad():
                 o_tensor = torch.tensor(obs[i], dtype=torch.float32).unsqueeze(0).to(device)
                 if args.agent_type == "rnn":
-                    q_vals, h_next = agents[i](o_tensor, hiddens[i].unsqueeze(0))
-                    hiddens[i] = h_next.squeeze(0)
+                    # Wycina poprawne wymiary (1, 1, hidden_dim) tak samo jak podczas treningu
+                    q_vals, h_next = agents[i](o_tensor, hiddens[:, i:i + 1, :])
+                    hiddens[:, i:i + 1, :] = h_next
                 else:
                     q_vals = agents[i](o_tensor)
                 actions.append(q_vals.argmax(1).item())

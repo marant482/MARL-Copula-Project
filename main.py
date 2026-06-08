@@ -237,8 +237,6 @@ def main():
                     batch = buffer.sample(current_batch_size)
                     loss_val = learner.update_bptt(batch)
 
-                    if step % TARGET_UPDATE_INTERVAL == 0:
-                        learner.update_targets()
 
             if args.agent_type == "rnn":
                 hiddens = next_hiddens
@@ -257,8 +255,8 @@ def main():
                 batch = buffer.sample(args.batch_size)
                 loss_val = learner.update(batch)
 
-                if step % TARGET_UPDATE_INTERVAL == 0:
-                    learner.update_targets()
+        if step % TARGET_UPDATE_INTERVAL == 0 and len(buffer) >= min_buffer_size:
+            learner.update_targets()
 
         obs, state = next_obs, next_state
 
