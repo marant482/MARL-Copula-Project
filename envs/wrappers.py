@@ -27,7 +27,7 @@ class SimpleEnvWrapper(BaseEnvWrapper):
         self.n_actions = n_actions
         
     def reset(self):
-        obs, _ = self.env.reset()
+        obs, state = env.reset(seed=args.seed) # dodał MP
         global_state = np.concatenate(obs) # Spłaszczamy lokalne obs
         return obs, global_state
         
