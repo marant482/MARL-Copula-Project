@@ -23,6 +23,8 @@ def parse_args():
     parser.add_argument("--max_steps", type=int, default=50)
     parser.add_argument("--independent_agents", action="store_true")
     parser.add_argument("--agent_type", type=str, default="rnn", choices=["rnn", "mlp"])
+    parser.add_argument("--seed", type=int, default=42) #dodał MP
+    parser.add_argument("--hidden_dim", type=int, default=128) #dodał MP
     return parser.parse_args()
 
 
