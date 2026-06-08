@@ -4,7 +4,8 @@ class BaseEnvWrapper:
     def __init__(self, env):
         self.env = env
         
-    def reset(self):
+    # DODANO: seed=None jako opcjonalny parametr
+    def reset(self, seed=None):
         """Musi zwracać: obs_list, global_state"""
         raise NotImplementedError
         
@@ -26,9 +27,13 @@ class SimpleEnvWrapper(BaseEnvWrapper):
         self.n_agents = n_agents
         self.n_actions = n_actions
         
-    def reset(self):
-        obs, state = env.reset(seed=args.seed) # dodał MP
-        global_state = np.concatenate(obs) # Spłaszczamy lokalne obs
+    # POPRAWKA: Przyjmujemy przekazany z main.py seed
+    def reset(self, seed=None):
+      
+        obs, info = self.env.reset(seed=seed) 
+        
+        # Tworzymy stan globalny poprzez spłaszczenie lokalnych obserwacji
+        global_state = np.concatenate(obs) 
         return obs, global_state
         
     def step(self, actions):
