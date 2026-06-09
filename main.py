@@ -62,6 +62,8 @@ def parse_args():
     # Parametry ewaluacji
     parser.add_argument("--eval_interval", type=int, default=5000)
     parser.add_argument("--eval_episodes", type=int, default=10)
+    parser.add_argument("--test_episodes", type=int, default=1000,
+                        help="Liczba epizodów dla ostatecznego testu po zakończeniu treningu")
 
     # Parametry stabilności RL
     parser.add_argument("--independent_agents", action="store_true")
@@ -311,6 +313,19 @@ def main():
         pbar.update(1)
 
     pbar.close()
+
+    # === URUCHOMIENIE KOŃCOWEGO TESTU NA DUŻEJ PRÓBIE ===
+    print(f"\n[TEST] Uruchamiam ostateczny test skuteczności na próbie {args.test_episodes} epizodów...")
+    final_test_reward = evaluate_model(
+        args.env_id, args.n_agents, args.n_actions, agents, device,
+        args.test_episodes, args.agent_type, args.hidden_dim
+    )
+    print(f"[TEST] Wynik ostateczny (Średnia nagroda z {args.test_episodes} prób): {final_test_reward:.2f}\n")
+
+    # Logowanie wyniku końcowego do dedykowanej sekcji w WandB
+    wandb.log({"Test/Final_Mean_Reward": final_test_reward}, step=args.total_steps)
+    # ===================================================
+
     weights_filename = f"agents_weights_{args.mixer}_{args.explorer}_{args.agent_type}.pth"
     torch.save(agents.state_dict(), weights_filename)
     wandb.finish()
