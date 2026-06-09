@@ -49,6 +49,8 @@ def parse_args():
     parser.add_argument("--use_bptt", action="store_true",
                         help="Używaj Episodic Buffer i Backpropagation Through Time dla sieci RNN")
     parser.add_argument("--max_steps", type=int, default=50, help="Maksymalna długość epizodu w Episodic Buffer")
+    parser.add_argument("--optimizer", type=str, default="rmsprop", choices=["rmsprop", "adam"],
+                        help="Wybór optymalizatora (rmsprop to standard w PyMARL)")
     
     # Parametry eksploracji
     parser.add_argument("--explorer", type=str, default="copula", choices=["copula", "epsilon"])
@@ -159,12 +161,24 @@ def main():
         mixer = QMixMixer(args.n_agents, STATE_DIM).to(device)
     elif args.mixer == "vdn":
         mixer = VDNMixer().to(device)
-        
+
     target_agents = copy.deepcopy(agents)
     target_mixer = copy.deepcopy(mixer)
-    
-    optimizer = optim.Adam(list(agents.parameters()) + list(mixer.parameters()), lr=args.lr)
-    
+
+    # Wybór optymalizatora na podstawie flagi z konsoli
+    if args.optimizer == "rmsprop":
+        optimizer = optim.RMSprop(
+            list(agents.parameters()) + list(mixer.parameters()),
+            lr=args.lr,
+            alpha=0.99,
+            eps=1e-5
+        )
+    else:
+        optimizer = optim.Adam(
+            list(agents.parameters()) + list(mixer.parameters()),
+            lr=args.lr
+        )
+
     if args.explorer == "copula":
         explorer = GaussianCopulaExplorer(args.n_agents, correlation=args.copula_corr)
     else:
