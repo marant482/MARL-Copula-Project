@@ -1,0 +1,160 @@
+_wandb:
+    value:
+        cli_version: 0.27.0
+        e:
+            8g43abjl36gjudil6jtr8o36mvr0dww9:
+                args:
+                    - --env_id
+                    - Foraging-8x8-2p-2f-v3
+                    - --n_agents
+                    - "2"
+                    - --n_actions
+                    - "6"
+                    - --obs_dim
+                    - "12"
+                    - --agent_type
+                    - rnn
+                    - --hidden_dim
+                    - "64"
+                    - --mixer
+                    - qmix
+                    - --lr
+                    - "0.0003"
+                    - --explorer
+                    - copula
+                    - --copula_corr
+                    - "0.7"
+                    - --eps_start
+                    - "1.0"
+                    - --eps_end
+                    - "0.05"
+                    - --eps_decay
+                    - "200000"
+                    - --polyak_tau
+                    - "0.01"
+                    - --total_steps
+                    - "500000"
+                    - --batch_size
+                    - "32"
+                    - --buffer_size
+                    - "10000"
+                    - --gamma
+                    - "0.99"
+                    - --grad_clip
+                    - "10.0"
+                    - --reward_priority
+                    - "0.25"
+                    - --eval_interval
+                    - "5000"
+                    - --eval_episodes
+                    - "10"
+                    - --use_bptt
+                    - --max_steps
+                    - "50"
+                    - --seed
+                    - "42"
+                codePath: main.py
+                codePathLocal: main.py
+                cpu_count: 1
+                cpu_count_logical: 2
+                cudaVersion: "13.0"
+                disk:
+                    /:
+                        total: "120942624768"
+                        used: "50576568320"
+                email: michal.posiadala@gmail.com
+                executable: /usr/bin/python3
+                git:
+                    commit: 93dd7e7637df480bf9481a2988521a9de6507dfb
+                    remote: https://github.com/marant482/MARL-Copula-Project.git
+                gpu: Tesla T4
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Turing
+                      cudaCores: 2560
+                      memoryTotal: "16106127360"
+                      name: Tesla T4
+                      uuid: GPU-2b93a097-4e92-882a-74a1-92aa27caa005
+                host: 7d6f078492e9
+                memory:
+                    total: "13605822464"
+                os: Linux-6.6.122+-x86_64-with-glibc2.35
+                program: /content/MARL-Copula-Project/main.py
+                python: CPython 3.12.13
+                root: /content/MARL-Copula-Project
+                startedAt: "2026-06-09T11:30:03.554253Z"
+                writerId: 8g43abjl36gjudil6jtr8o36mvr0dww9
+        m: []
+        python_version: 3.12.13
+        t:
+            "1":
+                - 1
+            "2":
+                - 1
+            "3":
+                - 2
+                - 13
+                - 16
+                - 61
+            "4": 3.12.13
+            "5": 0.27.0
+            "12": 0.27.0
+            "13": linux-x86_64
+action_copula_corr:
+    value: 0
+agent_type:
+    value: rnn
+batch_size:
+    value: 32
+buffer_size:
+    value: 10000
+copula_corr:
+    value: 0.7
+env_id:
+    value: Foraging-8x8-2p-2f-v3
+eps_decay:
+    value: 200000
+eps_end:
+    value: 0.05
+eps_start:
+    value: 1
+eval_episodes:
+    value: 10
+eval_interval:
+    value: 5000
+explorer:
+    value: copula
+gamma:
+    value: 0.99
+grad_clip:
+    value: 10
+hidden_dim:
+    value: 64
+independent_agents:
+    value: false
+lr:
+    value: 0.0003
+max_steps:
+    value: 50
+mixer:
+    value: qmix
+n_actions:
+    value: 6
+n_agents:
+    value: 2
+num_layers:
+    value: 2
+obs_dim:
+    value: 12
+polyak_tau:
+    value: 0.01
+reward_priority:
+    value: 0.25
+seed:
+    value: 42
+target_update:
+    value: 5000
+total_steps:
+    value: 500000
+use_bptt:
+    value: true

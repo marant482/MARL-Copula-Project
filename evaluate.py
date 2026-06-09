@@ -6,9 +6,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import imageio
 import lbforaging
+import random
 
 from modules.agents import MLPAgent, RNNAgent
 from envs.wrappers import SimpleEnvWrapper
+
+# [ZMIANA 2] Prawdopodobieństwo wykonania losowego ruchu podczas ewaluacji
+EVAL_RANDOM_ACTION_PROB = 0.05
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Ewaluacja wytrenowanego modelu MARL")
@@ -23,8 +28,8 @@ def parse_args():
     parser.add_argument("--max_steps", type=int, default=50)
     parser.add_argument("--independent_agents", action="store_true")
     parser.add_argument("--agent_type", type=str, default="rnn", choices=["rnn", "mlp"])
-    parser.add_argument("--seed", type=int, default=42) #dodał MP
-    parser.add_argument("--hidden_dim", type=int, default=128) #dodał MP
+    parser.add_argument("--seed", type=int, default=42)
+    # NAPRAWKA: usunięto zduplikowany argument --hidden_dim
     return parser.parse_args()
 
 
@@ -34,40 +39,44 @@ def evaluate():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Rozpoczynam ewaluację na: {device}")
     print(f"Środowisko: {args.env_id} | Model z eksploracji: {args.explorer}")
+    print(f"Losowe ruchy podczas ewaluacji: {EVAL_RANDOM_ACTION_PROB * 100:.0f}%")
 
-    # 1. Tworzymy środowisko (to ono wie, jakie jest duże)
+    # 1. Tworzymy środowisko
     raw_env = gym.make(args.env_id)
     env = SimpleEnvWrapper(raw_env, args.n_agents, args.n_actions)
 
-    # 2. NOWOŚĆ: Pobieramy rozmiar bezpośrednio z fizycznej siatki gry!
-    # Jeśli środowisko to 5x5, shape wyniesie (5, 5), więc bierzemy [0], czyli 5.
+    # Rozmiar siatki pobieramy bezpośrednio ze środowiska
     GRID_SIZE = raw_env.unwrapped.field.shape[0]
 
-    # Inicjalizacja sieci agentów (Współdzielenie wag lub oddzielne sieci)
+    # Inicjalizacja sieci agentów (współdzielenie wag lub oddzielne sieci)
     if args.agent_type == "rnn":
         if args.independent_agents:
             agents = nn.ModuleList(
-                [RNNAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim).to(device) for _ in
-                 range(args.n_agents)])
+                [RNNAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim).to(device)
+                 for _ in range(args.n_agents)])
         else:
             shared_agent = RNNAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim).to(device)
             agents = nn.ModuleList([shared_agent for _ in range(args.n_agents)])
     else:
         if args.independent_agents:
-            agents = nn.ModuleList([MLPAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim, num_layers=args.num_layers).to(device) for _ in range(args.n_agents)])
+            agents = nn.ModuleList(
+                [MLPAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim,
+                          num_layers=args.num_layers).to(device)
+                 for _ in range(args.n_agents)])
         else:
-            shared_agent = MLPAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim, num_layers=args.num_layers).to(device)
+            shared_agent = MLPAgent(args.obs_dim, args.n_actions, hidden_dim=args.hidden_dim,
+                                    num_layers=args.num_layers).to(device)
             agents = nn.ModuleList([shared_agent for _ in range(args.n_agents)])
 
     weights_filename = f"agents_weights_{args.mixer}_{args.explorer}_{args.agent_type}.pth"
-    
+
     try:
         agents.load_state_dict(torch.load(weights_filename, map_location=device, weights_only=True))
         print(f"Pomyślnie wczytano wagi z pliku {weights_filename}")
     except FileNotFoundError:
         print(f"BŁĄD: Nie znaleziono pliku {weights_filename}!")
         return
-        
+
     agents.eval()
     obs, _ = env.reset()
     frames = []
@@ -92,7 +101,7 @@ def evaluate():
             for i, player in enumerate(raw_env.unwrapped.players):
                 if player.position is not None:
                     r, c = player.position
-                    ax.scatter(c, GRID_SIZE - 1 - r, s=500, label=f"Agent {i+1}")
+                    ax.scatter(c, GRID_SIZE - 1 - r, s=500, label=f"Agent {i + 1}")
 
             field = raw_env.unwrapped.field
             food_positions = np.argwhere(field > 0)
@@ -108,24 +117,29 @@ def evaluate():
 
         actions = []
         for i in range(args.n_agents):
-            with torch.no_grad():
-                o_tensor = torch.tensor(obs[i], dtype=torch.float32).unsqueeze(0).to(device)
-                if args.agent_type == "rnn":
-                    # Wycina poprawne wymiary (1, 1, hidden_dim) tak samo jak podczas treningu
-                    q_vals, h_next = agents[i](o_tensor, hiddens[:, i:i + 1, :])
-                    hiddens[:, i:i + 1, :] = h_next
-                else:
-                    q_vals = agents[i](o_tensor)
-                actions.append(q_vals.argmax(1).item())
+            # [ZMIANA 2] 5% szans na losowy ruch podczas ewaluacji
+            if random.random() < EVAL_RANDOM_ACTION_PROB:
+                actions.append(random.randint(0, args.n_actions - 1))
+            else:
+                with torch.no_grad():
+                    o_tensor = torch.tensor(obs[i], dtype=torch.float32).unsqueeze(0).to(device)
+                    if args.agent_type == "rnn":
+                        q_vals, h_next = agents[i](o_tensor, hiddens[:, i:i + 1, :])
+                        hiddens[:, i:i + 1, :] = h_next
+                    else:
+                        q_vals = agents[i](o_tensor)
+                    actions.append(q_vals.argmax(1).item())
 
         next_obs, _, _, terminated, truncated, _ = env.step(actions)
         done = bool(np.any(terminated) or np.any(truncated))
+        obs = next_obs
         step += 1
 
     gif_path = f"eval_{args.explorer}_{args.agent_type}.gif"
     if frames:
         imageio.mimsave(gif_path, frames, fps=5)
         print(f"Zapisano animację jako: {gif_path}")
+
 
 if __name__ == "__main__":
     evaluate()

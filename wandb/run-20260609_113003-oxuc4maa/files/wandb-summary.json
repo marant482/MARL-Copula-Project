@@ -1,0 +1,1 @@
+{"Train/Episode_Reward":0.25,"_runtime":1248.494176749,"_wandb":{"runtime":1248},"Train/Epsilon":0.05,"Train/Episodes_Total":10110,"Train/Loss":0.5425776243209839,"Eval/Mean_Reward":0.21666666666666665,"_timestamp":1.781005853155291e+09,"_step":500000}
