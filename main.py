@@ -66,7 +66,11 @@ def parse_args():
     # Parametry stabilności RL
     parser.add_argument("--independent_agents", action="store_true")
     parser.add_argument("--grad_clip", type=float, default=10.0)
-    parser.add_argument("--target_update", type=int, default=5000)
+    parser.add_argument("--target_update", type=int, default=5000,
+                        help="Zachowany dla kompatybilności; przy polyak averaging nieużywany")
+    # [ZMIANA 3] Polyak averaging: tau bliskie 0 = wolne śledzenie (stabilność), tau=1.0 = twarda kopia
+    parser.add_argument("--polyak_tau", type=float, default=0.005,
+                        help="Współczynnik miękkiej aktualizacji target networks (Polyak averaging)")
     parser.add_argument("--reward_priority", type=float, default=0.25,
                         help="Odsetek batcha (0.0 do 1.0) rezerwowany dla kroków/epizodów z nagrodą. Ustawienie na 0.0 całkowicie wyłącza ten mechanizm.")
 
@@ -175,7 +179,9 @@ def main():
         buffer = ReplayBuffer(args.buffer_size, args.n_agents, args.obs_dim, STATE_DIM, hidden_dim=args.hidden_dim,
                               reward_priority=args.reward_priority)
         min_buffer_size = MIN_BUFFER_SIZE
-    learner = QLearner(agents, mixer, target_agents, target_mixer, optimizer, args.gamma, device, grad_clip=args.grad_clip)
+    # [ZMIANA 3] Przekazujemy polyak_tau — target networks aktualizowane miękko po każdym kroku
+    learner = QLearner(agents, mixer, target_agents, target_mixer, optimizer, args.gamma, device,
+                       grad_clip=args.grad_clip, polyak_tau=args.polyak_tau)
     
     obs, state = env.reset()
     episode_reward = 0
@@ -273,8 +279,8 @@ def main():
                 batch = buffer.sample(args.batch_size)
                 loss_val = learner.update(batch)
 
-        if step % TARGET_UPDATE_INTERVAL == 0 and len(buffer) >= min_buffer_size:
-            learner.update_targets()
+        # [ZMIANA 3] Polyak averaging jest teraz wywoływany wewnątrz learner.update() i learner.update_bptt()
+        # — twarda aktualizacja co TARGET_UPDATE_INTERVAL kroków nie jest już potrzebna
 
         obs, state = next_obs, next_state
 

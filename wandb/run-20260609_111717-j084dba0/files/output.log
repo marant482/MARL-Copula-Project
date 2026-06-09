@@ -1,0 +1,41 @@
+Trening QMIX (copula):   0% 0/2000000 [00:00<?, ?it/s]/usr/local/lib/python3.12/dist-packages/gymnasium/utils/passive_env_checker.py:244: UserWarning: [33mWARN: The reward returned by `step()` must be a float, int, np.integer or np.floating, actual type: <class 'list'>[0m
+  logger.warn(
+Trening QMIX (copula):   0% 2109/2000000 [00:05<1:13:11, 454.93it/s]Error in sys.excepthook:
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/dist-packages/wandb/sdk/lib/exit_hooks.py", line 54, in exc_handler
+    traceback.print_exception(exc_type, exc, tb)
+  File "/usr/lib/python3.12/traceback.py", line 124, in print_exception
+    te = TracebackException(type(value), value, tb, limit=limit, compact=True)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/traceback.py", line 733, in __init__
+    self.stack = StackSummary._extract_from_extended_frame_gen(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/traceback.py", line 418, in _extract_from_extended_frame_gen
+    for f, (lineno, end_lineno, colno, end_colno) in frame_gen:
+                                                     ^^^^^^^^^
+  File "/usr/lib/python3.12/traceback.py", line 355, in _walk_tb_with_full_positions
+    positions = _get_code_position(tb.tb_frame.f_code, tb.tb_lasti)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/traceback.py", line 369, in _get_code_position
+    return next(itertools.islice(positions_gen, instruction_index // 2, None))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+
+Original exception was:
+Traceback (most recent call last):
+  File "/content/MARL-Copula-Project/main.py", line 313, in <module>
+    main()
+  File "/content/MARL-Copula-Project/main.py", line 196, in main
+    random_actions = action_sampler.sample()
+                     ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/content/MARL-Copula-Project/modules/explorers.py", line 47, in sample
+    z = np.random.multivariate_normal(np.zeros(self.n_agents), self.Sigma)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "numpy/random/mtrand.pyx", line 4261, in numpy.random.mtrand.RandomState.multivariate_normal
+  File "/usr/local/lib/python3.12/dist-packages/numpy/linalg/_linalg.py", line 1793, in svd
+    with errstate(call=_raise_linalgerror_svd_nonconvergence,
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/numpy/_core/_ufunc_config.py", line 400, in __init__
+    def __init__(self, *, call=_Unspecified,
+
+KeyboardInterrupt

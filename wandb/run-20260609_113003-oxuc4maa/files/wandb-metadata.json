@@ -1,0 +1,91 @@
+{
+  "os": "Linux-6.6.122+-x86_64-with-glibc2.35",
+  "python": "CPython 3.12.13",
+  "startedAt": "2026-06-09T11:30:03.554253Z",
+  "args": [
+    "--env_id",
+    "Foraging-8x8-2p-2f-v3",
+    "--n_agents",
+    "2",
+    "--n_actions",
+    "6",
+    "--obs_dim",
+    "12",
+    "--agent_type",
+    "rnn",
+    "--hidden_dim",
+    "64",
+    "--mixer",
+    "qmix",
+    "--lr",
+    "0.0003",
+    "--explorer",
+    "copula",
+    "--copula_corr",
+    "0.7",
+    "--eps_start",
+    "1.0",
+    "--eps_end",
+    "0.05",
+    "--eps_decay",
+    "200000",
+    "--polyak_tau",
+    "0.01",
+    "--total_steps",
+    "500000",
+    "--batch_size",
+    "32",
+    "--buffer_size",
+    "10000",
+    "--gamma",
+    "0.99",
+    "--grad_clip",
+    "10.0",
+    "--reward_priority",
+    "0.25",
+    "--eval_interval",
+    "5000",
+    "--eval_episodes",
+    "10",
+    "--use_bptt",
+    "--max_steps",
+    "50",
+    "--seed",
+    "42"
+  ],
+  "program": "/content/MARL-Copula-Project/main.py",
+  "codePath": "main.py",
+  "codePathLocal": "main.py",
+  "git": {
+    "remote": "https://github.com/marant482/MARL-Copula-Project.git",
+    "commit": "93dd7e7637df480bf9481a2988521a9de6507dfb"
+  },
+  "email": "michal.posiadala@gmail.com",
+  "root": "/content/MARL-Copula-Project",
+  "host": "7d6f078492e9",
+  "executable": "/usr/bin/python3",
+  "cpu_count": 1,
+  "cpu_count_logical": 2,
+  "gpu": "Tesla T4",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "120942624768",
+      "used": "50576568320"
+    }
+  },
+  "memory": {
+    "total": "13605822464"
+  },
+  "gpu_nvidia": [
+    {
+      "name": "Tesla T4",
+      "memoryTotal": "16106127360",
+      "cudaCores": 2560,
+      "architecture": "Turing",
+      "uuid": "GPU-2b93a097-4e92-882a-74a1-92aa27caa005"
+    }
+  ],
+  "cudaVersion": "13.0",
+  "writerId": "8g43abjl36gjudil6jtr8o36mvr0dww9"
+}
