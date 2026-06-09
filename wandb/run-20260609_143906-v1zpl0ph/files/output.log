@@ -1,0 +1,3 @@
+Trening QMIX (copula):   0% 0/100000 [00:00<?, ?it/s]/usr/local/lib/python3.12/dist-packages/gymnasium/utils/passive_env_checker.py:244: UserWarning: [33mWARN: The reward returned by `step()` must be a float, int, np.integer or np.floating, actual type: <class 'list'>[0m
+  logger.warn(
+Trening QMIX (copula): 100% 100000/100000 [25:24<00:00, 65.59it/s, Eval Reward=0.04, Epsilon=0.05] 
