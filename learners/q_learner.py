@@ -46,7 +46,9 @@ class QLearner:
         for i in range(N):
             agent = self.agents[i]
             if hasattr(agent, "rnn"):
-                q_vals, _ = agent(obs[:, i, :], hiddens[:, i, :].unsqueeze(0))
+                q_vals, _ = agent(obs[:, i, :], hiddens[:, i, :].unsqueeze(0).contiguous())
+
+                # q_vals, _ = agent(obs[:, i, :], hiddens[:, i, :].unsqueeze(0))
             else:
                 q_vals = agent(obs[:, i, :])
             chosen_q = q_vals.gather(1, actions[:, i:i + 1]).squeeze(1)
@@ -60,9 +62,12 @@ class QLearner:
             # [ZMIANA 5] Selekcja akcji przez ONLINE agents (Double DQN)
             online_best_actions = []
             for i in range(N):
+              
                 agent = self.agents[i]
                 if hasattr(agent, "rnn"):
-                    online_next_q, _ = agent(next_obs[:, i, :], next_hiddens[:, i, :].unsqueeze(0))
+                    online_next_q, _ = agent(next_obs[:, i, :], next_hiddens[:, i, :].unsqueeze(0).contiguous())
+
+                    # online_next_q, _ = agent(next_obs[:, i, :], next_hiddens[:, i, :].unsqueeze(0))
                 else:
                     online_next_q = agent(next_obs[:, i, :])
                 best_action = online_next_q.argmax(dim=1, keepdim=True)  # (B, 1)
@@ -73,7 +78,8 @@ class QLearner:
             for i in range(N):
                 target_agent = self.target_agents[i]
                 if hasattr(target_agent, "rnn"):
-                    target_q_vals, _ = target_agent(next_obs[:, i, :], next_hiddens[:, i, :].unsqueeze(0))
+                    target_q_vals, _ = target_agent(next_obs[:, i, :], next_hiddens[:, i, :].unsqueeze(0).contiguous())
+                    # target_q_vals, _ = target_agent(next_obs[:, i, :], next_hiddens[:, i, :].unsqueeze(0))
                 else:
                     target_q_vals = target_agent(next_obs[:, i, :])
                 # Zbieramy Q-value dla akcji wybranej przez sieć online

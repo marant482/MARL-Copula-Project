@@ -1,0 +1,21 @@
+2026-06-09 14:34:49,010 INFO    MainThread:10567 [wandb_setup.py:_flush():81] Current SDK version is 0.27.0
+2026-06-09 14:34:49,011 INFO    MainThread:10567 [wandb_setup.py:_flush():81] Configure stats pid to 10567
+2026-06-09 14:34:49,011 INFO    MainThread:10567 [wandb_setup.py:_flush():81] Loading settings from environment variables
+2026-06-09 14:34:49,011 INFO    MainThread:10567 [wandb_init.py:setup_run_log_directory():723] Logging user logs to /content/MARL-Copula-Project/wandb/run-20260609_143449-lhcwfaka/logs/debug.log
+2026-06-09 14:34:49,011 INFO    MainThread:10567 [wandb_init.py:setup_run_log_directory():724] Logging internal logs to /content/MARL-Copula-Project/wandb/run-20260609_143449-lhcwfaka/logs/debug-internal.log
+2026-06-09 14:34:49,011 INFO    MainThread:10567 [wandb_init.py:init():851] calling init triggers
+2026-06-09 14:34:49,011 INFO    MainThread:10567 [wandb_init.py:init():856] wandb.init called with sweep_config: {}
+config: {'env_id': 'Foraging-8x8-2p-2f-v3', 'n_agents': 2, 'n_actions': 6, 'obs_dim': 12, 'seed': 42, 'total_steps': 100000, 'batch_size': 32, 'buffer_size': 10000, 'lr': 0.0005, 'gamma': 0.99, 'mixer': 'qmix', 'use_bptt': False, 'max_steps': 50, 'explorer': 'copula', 'copula_corr': 0.7, 'action_copula_corr': 0.0, 'eps_start': 1.0, 'eps_end': 0.05, 'eps_decay': 20000, 'eval_interval': 10000, 'eval_episodes': 10, 'independent_agents': False, 'grad_clip': 10.0, 'target_update': 5000, 'polyak_tau': 0.005, 'reward_priority': 0.25, 'agent_type': 'rnn', 'hidden_dim': 128, 'num_layers': 2, '_wandb': {}}
+2026-06-09 14:34:49,011 INFO    MainThread:10567 [wandb_init.py:init():899] starting backend
+2026-06-09 14:34:49,756 INFO    MainThread:10567 [wandb_init.py:init():914] sending inform_init request
+2026-06-09 14:34:49,941 INFO    MainThread:10567 [wandb_init.py:init():919] backend started and connected
+2026-06-09 14:34:49,957 INFO    MainThread:10567 [wandb_init.py:init():989] updated telemetry
+2026-06-09 14:34:49,964 INFO    MainThread:10567 [wandb_init.py:init():1012] communicating run to backend with 90.0 second timeout
+2026-06-09 14:34:50,256 INFO    MainThread:10567 [wandb_init.py:init():1057] starting run threads in backend
+2026-06-09 14:34:50,807 INFO    MainThread:10567 [wandb_run.py:_console_start():2509] atexit reg
+2026-06-09 14:34:50,807 INFO    MainThread:10567 [wandb_run.py:_redirect():2359] redirect: wrap_raw
+2026-06-09 14:34:50,807 INFO    MainThread:10567 [wandb_run.py:_redirect():2428] Wrapping output streams.
+2026-06-09 14:34:50,807 INFO    MainThread:10567 [wandb_run.py:_redirect():2451] Redirects installed.
+2026-06-09 14:34:50,814 INFO    MainThread:10567 [wandb_init.py:init():1095] run started, returning control to user process
+2026-06-09 14:34:58,494 INFO    wandb-AsyncioManager-main:10567 [service_client.py:_forward_responses():122] Reached EOF.
+2026-06-09 14:34:58,494 INFO    wandb-AsyncioManager-main:10567 [mailbox.py:close():154] Closing mailbox, abandoning 1 handles.

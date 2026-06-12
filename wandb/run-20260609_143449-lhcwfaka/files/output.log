@@ -1,0 +1,30 @@
+Trening QMIX (copula):   0% 0/100000 [00:00<?, ?it/s]/usr/local/lib/python3.12/dist-packages/gymnasium/utils/passive_env_checker.py:244: UserWarning: [33mWARN: The reward returned by `step()` must be a float, int, np.integer or np.floating, actual type: <class 'list'>[0m
+  logger.warn(
+Trening QMIX (copula):   0% 474/100000 [00:01<02:58, 556.31it/s]Traceback (most recent call last):
+  File "/content/MARL-Copula-Project/main.py", line 319, in <module>
+    main()
+  File "/content/MARL-Copula-Project/main.py", line 280, in main
+    loss_val = learner.update(batch)
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "/content/MARL-Copula-Project/learners/q_learner.py", line 49, in update
+    q_vals, _ = agent(obs[:, i, :], hiddens[:, i, :].unsqueeze(0))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/content/MARL-Copula-Project/modules/agents.py", line 46, in forward
+    out, hidden = self.rnn(x, hidden)
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/rnn.py", line 1449, in forward
+    result = _VF.gru(
+             ^^^^^^^^
+RuntimeError: rnn: hx is not contiguous
